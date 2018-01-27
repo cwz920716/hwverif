@@ -1,13 +1,17 @@
+(defun is-tail (x)
+  (and (consp x) (equal (cdr x) nil)))
+
 (defun app (a b)
-  (if a
-      (if (consp a)
-          (cons (car a) (app (cdr a) b))
-        (cons a b))
-    b))
+  (if (consp a)
+      (if (is-tail a)
+          (cons (car a) b)
+        (cons (car a) (app (cdr a) b)))
+    (cons a b)))
 
 (defun rev-until-nil (x)
   (if (consp x)
-      (app (rev-until-nil (cdr x)) (car x))
+      (if (is-tail x) x
+      (app (rev-until-nil (cdr x)) (car x)))
     x))
 
 (defun end-nil (x)
