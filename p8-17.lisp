@@ -1,28 +1,15 @@
-(defun is-tail (x)
-  (and (consp x) (equal (cdr x) nil)))
+(defun listize (x)
+  (cons x nil))
 
 (defun app (a b)
   (if (consp a)
-      (if (is-tail a)
-          (cons (car a) b)
-        (cons (car a) (app (cdr a) b)))
-    (cons a b)))
+      (cons (car a) (app (cdr a) b))
+    b))
 
-(defun rev-until-nil (x)
-  (if (consp x)
-      (if (is-tail x) x
-      (app (rev-until-nil (cdr x)) (car x)))
-    x))
-
-(defun end-nil (x)
-  (if (consp x)
-      (end-nil (cdr x))
-      (not x)))
-
-(defun rev (x) (rev-until-nil
-                (if (end-nil x)
-                    (cons nil x)
-                  x)))
+(defun rev (x)
+  (if (atom x)
+      nil
+    (app (rev (cdr x)) (listize (car x)))))
 
 (defun mapnil (x)
   (if (consp x)
@@ -63,7 +50,7 @@
   (if (consp x)
       (app (flatten (car x))
            (flatten (cdr x)))
-    (if x (cons x nil) nil)))
+    (cons x nil)))
 
 (defun length0 (x)
   (if (consp x)
