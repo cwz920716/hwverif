@@ -21,6 +21,7 @@ P48.
 
 Lemma 48.1. Prove (implies (sub x y) (sub x (cons a y))).
 Proof. Induct on x. The base case is (not (consp x)), (sub x (cons a y)) = t.
+
 The induction hypothesis is (and (consp x)
                                  (implies (sub (cdr x) y)
                                           (sub (cdr x) (cons a y)))).
@@ -44,13 +45,21 @@ Proof.
 Induct on a.
 The base case is (not (consp a)), (mem x a) = nil hence
 (and (mem x a) (sub a b)) = nil. Nil can imply anything. Base case done.
+
 The induction hypothesis is (and (consp a)
-                                 (implies (and (mem x a2) (sub a2 b))
+                                 (implies (and (mem x (cdr a)) (sub (cdr a) b))
                                           (mem x b))).
-Becuase (mem x a) and a = (cons a1 a2), we have either (equal x a1) or
-(mem x a2). 
-Case 1. x = a1. Because (sub a b) = t, we have (mem a1 b) = t. (Case 1 done).
-Case 2. (mem x a2). Because (sub a b), we have (mem a1 b) and (sub a2 b).
+Becuase (mem x a) = t and a = (cons (car a) (cdr a)),
+So (mem x a) = (if (equal x (car a)) t (mem x (cdr a))) = t,
+we have either (equal x (car a)) = t or
+(mem x (cdr a)) = t. 
+
+Case 1. (equal x (car a)) = t so x = (car a).
+Because (sub a b) = t, we have (mem x b) = (mem (car a) b) = t. (Case 1 done).
+
+Case 2. (mem x (cdr a)) = t.
+Because (sub a b) = (if (mem (car a) b) (sub (cdr a) b) nil) = t,
+we konw (mem (car a) b) = t and (sub (cdr a) b) = t.
 Based on induction hypothesis, we have (mem x b). (Case 2 done).
 QED.
 
@@ -59,16 +68,39 @@ Proof.
 Induct on a.
 The base case is (not (consp a)). We have (sub a c) = t. Base case done.
 The induction hypothesis is (and (consp a)
-                                 (implies (and (sub a2 b) (sub b c))
-                                          (sub a2 c))).
-Because a = (cons a1 a2),
-(sub a c) = (if (mem a1 c) (sub a2 c) nil).
-Because (sub a b) = t, we have (mem a1 b) = t and (sub a2 b) = t.
-Based on lemma 49.1, becase (mem a1 b) and (sub b c) we have (mem a1 c) = t.
-ALso, use the induction hypothesis, we have (sub a2 c) = t. Hence (sub a c) = t.
+                                 (implies (and (sub (cdr a) b) (sub b c))
+                                          (sub (cdr a) c))).
+Because a = (cons (car a) (cdr a)),
+(sub a c) = (if (mem (car a) c) (sub (cdr a) c) nil) and
+(sub a b) = (if (mem (car a) b) (sub (cdr a) b) nil).
+Because (sub a b) = t, we have (mem (car a) b) = t and (sub (cdr a) b) = t.
+Based on lemma 49.1, becase (mem (car a) b) and (sub b c) we have (mem (car a) c) = t.
+ALso, use the induction hypothesis, we have (sub (cdr a) c) = t.
+Hence (sub a c) = (if (mem (car a) c) (sub (cdr a) c) nil) t.
 Induction case done.
 QED.
 
 P50. 
-Lemma 50.1. Prove (implies (sub b a) (sub (app a b) a)).
-Proof. 
+Lemma 50.1. Prove (implies (and (sub a c) (sub b c))
+                                (sub (app a b) c)).
+Proof.
+Induct on a. The base case is (not (consp a)), (app a b) = b and
+(sub (app a b) c) = (sub b c) = t. (Base case done).
+
+The induction hypothesis is (and (consp a)
+                                 (implies (and (sub (cdr a) c) (sub b c))
+                                          (sub (app (cdr a) b) c))).
+
+Because (sub a c) = (if (mem (car a) c) (sub (cdr a) c) nil) = t,
+we have (mem (car a) c) = t and (sub (cdr a) c) = t.
+Use the induction hypothesis we have (sub (app (cdr a) b) c).
+We also know (app a b) = (cons (car a) (app (cdr a) b)) in the induction case.
+So (sub (app a b) c)) = (sub (cons (car a) (app (cdr a) b)) c)
+                      = (if (mem (car a) c)
+                            (sub (app (cdr a) b) c)
+                            nil)
+                      = t.
+QED.
+
+Too prove P50, use lemma 50.1 and we know (sub a a), hence,
+(sub (app a a) a). QED.
