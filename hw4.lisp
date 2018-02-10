@@ -35,8 +35,8 @@ The induction hypothesis is (and (consp a)
                                  (sub (cdr a) (cdr a)).
 Because (sub (cdr a) (cdr a)) and use lemma 48.1 replace 'a' = (car a),
 hence we have (sub (cdr a) (cons (car a) (cdr a))) = (sub (cdr a) a). 
-Also, it is easy to show (mem (car a) a) given a = (cons (car a) (cdr a)). Hence
-We have (sub a a) also is true in induction case. QED.
+Also, it is easy to show (mem (car a) a) = t given a = (cons (car a) (cdr a)). Hence
+We have (sub a a) = (if (mem (car a) a) (sub (cdr a) a) nil) = t. QED.
 
 P49.
 Lemma 49.1 Prove (implies (and (mem x a) (sub a b))
