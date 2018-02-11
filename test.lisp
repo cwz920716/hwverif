@@ -289,3 +289,13 @@
                                :X :TOP (:USE ORDERED-INS-ORDERED)
                                :PROMOTE (:DEMOTE 3)
                                :S))
+
+(defun rev1 (x a)
+  (if (consp x)
+      (rev1 (cdr x) (cons (car x) a))
+    a))
+
+(verify (implies (and (true-listp x)
+                      (true-listp y))
+                 (equal (rev1 x y)
+                        (app (rev x) y))))
