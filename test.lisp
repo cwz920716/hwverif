@@ -277,11 +277,15 @@
 
 (DEFTHM ORDERED-INS-ORDERED
         (IMPLIES (ORDERED L)
-                 (ORDERED (INS-SORT X L)))
+                 (ORDERED (INS-SORT A L)))
         :INSTRUCTIONS (:INDUCT :PROMOTE (:DIVE 1)
                                :EXPAND
                                :S :TOP :EXPAND :S (:USE ORDERED-CDR-OK)
                                :PROMOTE
                                :S :S))
 
-(verify (ordered (isort x)))
+(DEFTHM ORDERED-ISORT (ORDERED (ISORT X))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1)
+                               :X :TOP (:USE ORDERED-INS-ORDERED)
+                               :PROMOTE (:DEMOTE 3)
+                               :S))
