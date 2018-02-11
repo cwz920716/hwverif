@@ -182,3 +182,106 @@
                                :TOP :SPLIT (:DEMOTE 3 6)
                                :S))
 
+(defun count-in (x l)
+  (if (consp l)
+      (if (equal x (car l))
+          (+ 1 (count x (cdr l)))
+        (count x (cdr l)))
+    0))
+
+(defun consist (a x y)
+  (if (consp a)
+      (if (equal (count-in (car a) x)
+                 (count-in (car a) y))
+          (consist (cdr a) x y)
+        nil)
+    t))
+
+(DEFTHM CONSIST-SELF (CONSIST A X X)
+  :INSTRUCTIONS (:INDUCT :S (:DEMOTE 2) :S :S))
+
+(DEFTHM CONSIST-COMM
+        (EQUAL (CONSIST A X Y) (CONSIST A Y X))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1)
+                               :EXPAND :S :TOP (:DIVE 2)
+                               :EXPAND
+                               :S (:DIVE 1)
+                               :EXPAND :S
+                               :TOP (:DIVE 2)
+                               :EXPAND :S
+                               :TOP :S))
+
+(defun perm (x y)
+  (and (consist x x y)
+       (consist y x y)))
+
+
+(DEFTHM PERM-SELF (PERM X X)
+        :INSTRUCTIONS (:X))
+
+(DEFTHM PERM-COMM (EQUAL (PERM X Y) (PERM Y X))
+  :INSTRUCTIONS (:S :S))
+
+(defun ordered (x)
+  (if (atom x)
+      t
+    (if (atom (cdr x))
+        t
+      (if (lexorder (car x) (cadr x))
+          (ordered (cdr x))
+        nil))))
+
+(defun ins-sort (x l)
+  (if (atom l)
+      (cons x nil)
+    (if (lexorder x (car l))
+        (cons x l)
+      (cons (car l) (ins-sort x (cdr l)))
+      )))
+
+(defun isort (x)
+  (if (consp x)
+      (ins-sort (car x) (isort (cdr x)))
+    nil))
+
+(DEFTHM ORDERED-CDR-OK
+        (IMPLIES (ORDERED L) (ORDERED (CDR L)))
+        :INSTRUCTIONS (:INDUCT (:DIVE 1)
+                               :EXPAND
+                               :S :TOP
+                               :S (:DIVE 1)
+                               :EXPAND :S
+                               :TOP :S
+                               :PROMOTE :S
+                               :PROMOTE :S))
+
+(DEFTHM ORDERED-INS-HELPER
+        (IMPLIES (AND (ORDERED L)
+                      (CONSP L)
+                      (LEXORDER (CAR L) X))
+                 (LEXORDER (CAR L)
+                           (CAR (INS-SORT X (CDR L)))))
+        :INSTRUCTIONS (:INDUCT :PROMOTE (:DIVE 2 1)
+                               :EXPAND :S :TOP :SPLIT :S :S (:DEMOTE 3)
+                               :S (:DEMOTE 3)
+                               (:DIVE 1)
+                               :EXPAND :S
+                               :TOP :S
+                               :PROMOTE (:DIVE 2 1)
+                               :EXPAND :S
+                               :TOP :SPLIT
+                               :S :S
+                               :S :S
+                               :S :S
+                               :PROMOTE :S))
+
+(DEFTHM ORDERED-INS-ORDERED
+        (IMPLIES (ORDERED L)
+                 (ORDERED (INS-SORT X L)))
+        :INSTRUCTIONS (:INDUCT :PROMOTE (:DIVE 1)
+                               :EXPAND
+                               :S :TOP :EXPAND :S (:USE ORDERED-CDR-OK)
+                               :PROMOTE
+                               :S :S))
+
+(verify (ordered (isort x)))
