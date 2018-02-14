@@ -295,7 +295,35 @@
       (rev1 (cdr x) (cons (car x) a))
     a))
 
-(verify (implies (and (true-listp x)
-                      (true-listp y))
-                 (equal (rev1 x y)
-                        (app (rev x) y))))
+(DEFTHM APP-CONS-OK
+        (EQUAL (APP (APP A (LIST B)) C)
+               (APP A (CONS B C)))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1 1)
+                               :X :TOP (:DIVE 1)
+                               :S :TOP (:DIVE 2)
+                               :X
+                               :TOP :S))
+
+(DEFTHM REV1-IS-REV-APP
+        (EQUAL (REV1 X Y) (APP (REV X) Y))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1)
+                               :X := :TOP (:DROP 2)
+                               (:DIVE 2 1)
+                               :X
+                               :TOP :S))
+
+(DEFTHM APP-TLP-OK
+        (EQUAL (TRUE-LISTP (APP A B))
+               (TRUE-LISTP B))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1 1)
+                               :X :TOP (:DIVE 1)
+                               :X
+                               :TOP :S))
+(DEFTHM REV-TLP-OK (TRUE-LISTP (REV X))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1) :X :TOP :S))
+
+(DEFTHM REV1-NIL-IS-REV
+        (EQUAL (REV1 X NIL) (REV X))
+        :INSTRUCTIONS (:S (:USE APP-NIL-OK)
+                          (:USE REV-TLP-OK)
+                          :S))

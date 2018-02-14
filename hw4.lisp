@@ -102,5 +102,5 @@ So (sub (app a b) c)) = (sub (cons (car a) (app (cdr a) b)) c)
                       = t.
 QED.
 
-Too prove P50, use lemma 50.1 and we know (sub a a), hence,
+To prove P50, use lemma 50.1 and we know (sub a a), hence,
 (sub (app a a) a). QED.
