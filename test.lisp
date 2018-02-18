@@ -67,12 +67,11 @@
 (DEFTHM APP-NIL-OK
         (IMPLIES (TRUE-LISTP A)
                  (EQUAL (APP A NIL) A))
-        :INSTRUCTIONS (:PROMOTE :INDUCT :PROMOTE (:DIVE 1)
-                                :EXPAND :S :TOP :S :PROMOTE (:DIVE 1)
-                                :EXPAND
-                                :S :TOP (:CLAIM (TRUE-LISTP (CDR A)))
-                                (:CLAIM (EQUAL (APP (CDR A) NIL) (CDR A)))
-                                :S))
+        :INSTRUCTIONS (:INDUCT :S :PROMOTE (:DEMOTE 2)
+                               (:DIVE 1 1)
+                               :S :UP
+                               :S :TOP
+                               :PROMOTE :S))
 
 (DEFTHM APP-ASSOC
         (EQUAL (APP A (APP B C))
@@ -327,3 +326,76 @@
         :INSTRUCTIONS (:S (:USE APP-NIL-OK)
                           (:USE REV-TLP-OK)
                           :S))
+
+(DEFTHM MEM-APP-EQUALS-OR-MEM
+        (EQUAL (MEM E (APP A B))
+               (OR (MEM E A) (MEM E B)))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1)
+                               :EXPAND (:DIVE 1)
+                               (:DIVE 1)
+                               :X :UP :S :UP (:DIVE 1)
+                               :UP (:DIVE 2)
+                               :TOP (:DIVE 1 1)
+                               :TOP (:DIVE 2 1)
+                               :X :TOP (:DIVE 1)
+                               (:DIVE 2)
+                               (:DIVE 2)
+                               :UP (:DIVE 1)
+                               (:DIVE 2)
+                               (:DIVE 1)
+                               :X :UP :S :UP :S :UP :S (:DIVE 2 1)
+                               :X :UP :UP :S :TOP (:DIVE 2 2)
+                               :X :TOP (:DIVE 1)
+                               :S :TOP (:DEMOTE 3)
+                               :S (:DIVE 1)
+                               (:DIVE 2)
+                               :X :UP :EXPAND :S :UP (:DIVE 2 1)
+                               :X
+                               :UP :S))
+
+(DEFTHM MEM-EQUAL-HELPER
+        (IMPLIES (AND (MEM A L)
+                      (NOT (MEM B L))
+                      (CONSP L))
+                 (NOT (EQUAL A B)))
+        :INSTRUCTIONS (:PROMOTE (:DEMOTE 1)
+                                (:DIVE 1)
+                                :X :TOP :PROMOTE (:DEMOTE 1)
+                                (:DIVE 1)
+                                (:DIVE 1)
+                                :X :UP :S :TOP :PROMOTE (:DEMOTE 2)
+                                (:DIVE 1 2)
+                                :UP :S
+                                :TOP :S))
+
+(DEFTHM MEM-INT-HELPER
+        (IMPLIES (NOT (MEM X L))
+                 (NOT (MEM X (INT S L))))
+        :INSTRUCTIONS (:INDUCT :S :PROMOTE (:DIVE 1 2)
+                               :X :TOP :S (:DEMOTE 4)
+                               (:DEMOTE 3)
+                               :S
+                               :PROMOTE (:DIVE 1 2)
+                               :X :UP
+                               :X :TOP
+                               :S (:DIVE 1)
+                               :TOP (:DIVE 2)
+                               :TOP (:USE MEM-EQUAL-HELPER)
+                               :PROMOTE :SPLIT))
+
+(DEFTHM MEM-INT-EQUALS-AND-MEM
+        (EQUAL (MEM E (INT A B))
+               (AND (MEM E A) (MEM E B)))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1)
+                               (:DIVE 2)
+                               :EXPAND :S :UP :S :UP (:DIVE 2 1)
+                               :EXPAND :S :TOP (:DEMOTE 3)
+                               :S (:DIVE 1 2)
+                               :X
+                               :UP :S
+                               :TOP (:DIVE 2 1)
+                               :X :UP
+                               :UP :S
+                               :SPLIT (:USE MEM-INT-HELPER)
+                               :PROMOTE :S))
+
