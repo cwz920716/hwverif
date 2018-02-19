@@ -421,3 +421,28 @@
                                (:DIVE 1 2)
                                :S :TOP (:DEMOTE 3)
                                :S))
+
+(DEFTHM MEM-SUB-OK
+        (IMPLIES (AND (MEM X A) (SUB A B))
+                 (MEM X B))
+        :INSTRUCTIONS (:INDUCT :S :PROMOTE (:DEMOTE 4)
+                               (:DIVE 1)
+                               :X :TOP :S (:DIVE 1 1)
+                               :X :TOP (:DIVE 1 2)
+                               :X :TOP :PROMOTE (:DEMOTE 4)
+                               :SPLIT))
+
+(DEFTHM SUB-TRANS-OK
+        (IMPLIES (AND (SUB A B) (SUB B C))
+                 (SUB A C))
+        :INSTRUCTIONS (:INDUCT :S (:DIVE 1)
+                               (:DIVE 1)
+                               :X :TOP :PROMOTE
+                               (:USE (:INSTANCE MEM-SUB-OK (X (CAR A))
+                                                (A B)
+                                                (B C)))
+                               (:DIVE 1 1)
+                               :X :TOP (:DIVE 2)
+                               :X :TOP :PROMOTE (:DEMOTE 5 6)
+                               (:DEMOTE 3)
+                               :S))
