@@ -446,3 +446,19 @@
                                :X :TOP :PROMOTE (:DEMOTE 5 6)
                                (:DEMOTE 3)
                                :S))
+
+(DEFTHM SUB-APP-OK
+        (IMPLIES (AND (SUB A C) (SUB B C))
+                 (SUB (APP A B) C))
+        :INSTRUCTIONS (:INDUCT :PROMOTE (:DIVE 1)
+                               :X :TOP :S (:DIVE 1 1)
+                               :X :TOP :PROMOTE (:DIVE 1)
+                               :X :TOP :X (:DEMOTE 4 5)
+                               (:DEMOTE 2)
+                               :S))
+
+(DEFTHM APP-A-A-SUB-A-OK (SUB (APP A A) A)
+        :INSTRUCTIONS ((:USE (:INSTANCE SUB-APP-OK (A A)
+                                        (B A)
+                                        (C A)))
+                       (:USE (:INSTANCE SUB-A-A-OK (A A)))))
