@@ -399,18 +399,6 @@
                                :SPLIT (:USE MEM-INT-HELPER)
                                :PROMOTE :S))
 
-(DEFTHM SUB-CONS-OK
-        (IMPLIES (SUB X Y) (SUB X (CONS A Y)))
-        :INSTRUCTIONS (:PROMOTE :INDUCT :S (:DIVE 1)
-                                :X :TOP :PROMOTE :EXPAND :S (:DEMOTE 2)
-                                (:DIVE 1 1)
-                                :X :TOP
-                                :S :PROMOTE :EXPAND :S-PROP (:DEMOTE 4)
-                                (:DIVE 1)
-                                :EXPAND :S :TOP :PROMOTE (:DEMOTE 5)
-                                (:DEMOTE 3)
-                                :S))
-
 (DEFTHM SUB-A-A-OK (SUB A A)
         :INSTRUCTIONS (:INDUCT :S (:DEMOTE 2)
                                (:DIVE 1)
