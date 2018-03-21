@@ -111,7 +111,7 @@
            ))
     ))
 
-(defun halide-eval (e c)
+(defun expr-eval (e c)
   (declare (xargs :guard
                   (and (exprp e)
                        (contextp c))))
@@ -125,16 +125,17 @@
     (let ((fn (car e))
           (args (cdr e)))
       (case fn
-        (- (- (ifix (halide-eval (car args) c))))
-        (+ (+ (ifix (halide-eval (car args) c))
-              (ifix (halide-eval (cadr args) c))))
-        (* (* (ifix (halide-eval (car args) c))
-              (ifix (halide-eval (cadr args) c))))
-        ([] (let ((buf (halide-eval (car args) c)))
+        (- (- (ifix (expr-eval (car args) c))))
+        (+ (+ (ifix (expr-eval (car args) c))
+              (ifix (expr-eval (cadr args) c))))
+        (* (* (ifix (expr-eval (car args) c))
+              (ifix (expr-eval (cadr args) c))))
+        ([] (let ((buf (expr-eval (car args) c)))
               (if (bufferp buf)
-                  ([] buf (ifix (halide-eval (cadr args) c)))
+                  ([] buf (ifix (expr-eval (cadr args) c)))
                 (ifix buf))))
         (otherwise 0)))))
+                  
 
 (defun constant-fold (e)
   (declare (xargs
@@ -170,5 +171,71 @@
 (defthm constant-fold-is-correct
   (implies (and (exprp e)
                 (contextp a))
-           (equal (halide-eval (constant-fold e) a)
-                  (halide-eval e a))))
+           (equal (expr-eval (constant-fold e) a)
+                  (expr-eval e a))))
+
+;; A halide program has three components: A symbolic name, a symblic list for
+;; dimentional vars, and a expression for pure definition
+(defun halidep (e)
+  (declare (xargs :guard t))
+  (and (consp e)
+       (consp (car e))
+       (symbolp (caar e))
+       (symbol-listp (cdar e))
+       (> (len (cdar e)) 0)
+       (exprp (cdr e))))
+
+(defun halide-1dp (e)
+  (declare (xargs :guard t))
+  (and (consp e)
+       (consp (car e))
+       (symbolp (caar e))
+       (symbol-listp (cdar e))
+       (= (len (cdar e)) 1)
+       (exprp (cdr e))))
+
+(defun halide-funcname (e)
+  (declare (xargs :guard (halidep e)))
+  (caar e))
+
+(defun halide-dims (e)
+  (declare (xargs :guard (halidep e)))
+  (cdar e))
+
+(defun halide-expr (e)
+  (declare (xargs :guard (halidep e)))
+  (cdr e))
+
+(defun realize-at-1d (e id ctx)
+  (declare (xargs :guard (and (natp id)
+                              (halide-1dp e)
+                              (contextp ctx))))
+  (let* ((dim0 (car (halide-dims e)))
+         (rhs (halide-expr e))
+         (idp (cons dim0 id)))
+    (expr-eval rhs (cons idp ctx))))
+
+(assert-event (equal 3
+                     (realize-at-1d (cons '(f x)
+                                          '(+ x (* x 2)))
+                                    1 nil)))
+
+(assert-event (equal 63
+                     (realize-at-1d (cons '(f x)
+                                          '(* x (+ x 2)))
+                                    7 nil)))
+
+(assert-event (equal 5
+                     (realize-at-1d (cons '(f x)
+                                          '([] input x))
+                                    4
+                                    (cons '(input 1 1 2 3 5 8 13)
+                                          nil)
+                                    )))
+
+(defun realize-1d-inner (e size id ctx)
+  (declare (xargs :guard (and (halide-1dp e)
+                              (natp size)
+                              (natp id)
+                              (contextp ctx))))
+  (cons (realize
