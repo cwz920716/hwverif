@@ -22,6 +22,8 @@
 
 ;; For milestone 0.1, we build an evaluator for halide expression.
 
+(include-book "std/lists/top" :dir :system)
+
 (defun bufferp (buf)
   (declare (xargs :guard t))
   (and (integer-listp buf)
@@ -66,6 +68,12 @@
   (declare (xargs :guard (and (bufferp buf)
                               (integerp x))))
   (nth (bound x (length buf)) buf))
+
+(defun []= (buf x val)
+  (declare (xargs :guard (and (bufferp buf)
+                              (integerp x)
+                              (integerp val))))
+  (update-nth (bound x (length buf)) val buf))
   
 (defun contextp (x)
   (declare (xargs :guard t))
@@ -107,6 +115,10 @@
                       (atom (cddr args))
                       (symbolp arg1)
                       (exprp arg2)))
+             (alloca (and (consp args)
+                          (atom (cdr args))
+                          (natp arg1)))
+             
              (otherwise nil))
            ))
     ))
@@ -134,6 +146,7 @@
               (if (bufferp buf)
                   ([] buf (ifix (expr-eval (cadr args) c)))
                 (ifix buf))))
+        (alloca (repeat 0 (ifix (expr-eval (car args) c))))
         (otherwise 0)))))
                   
 
@@ -163,6 +176,7 @@
                (* v1 v2)
              (cons fn (cons v1 (cons v2 arg2*)))))
         ([] (cons fn (cons v1 (cons v2 arg2*))))
+        (alloca (cons fn (cons v1 arg1*)))
         (otherwise e)))))
 
 (defthm constant-fold-expr (implies (exprp e)
@@ -279,3 +293,50 @@
                 (contextp ctx))
            (equal (len (realize-1d e N ctx))
                   N)))
+
+;; A halide IR is a C-like internal format:
+;;   stmt = skip
+;;          (skip)
+;;        = stmt ;; stmt
+;;          (begin stmt stmt)
+;;        = assign symbol index val
+;;          ([]= symbol expr expr)
+;;        = malloc symbol size
+;;          (malloc symbol nat)
+;;        = for symbol form nat to nat stmt
+;;          (for symbol nat nat stmt)
+
+(defun stmtp (s)
+  (declare (xargs :guard t))
+  (if (atom s)
+      nil
+    (and (true-listp s)
+         (let* ((com (car s))
+                (args (cdr s))
+                (s1 (car args))
+                (s2 (cadr args))
+                (s2* (cddr args))
+                (s3 (car s2*))
+                (s3* (cdr s2*))
+                (s4 (car s3*))
+                (s4* (cdr s3*)))
+           (case com
+             (skip (atom args))
+             (begin (and (stmtp s1)
+                         (stmtp s2)
+                         (atom s2*)))
+             (malloc (and (symbolp s1)
+                          (natp s2)
+                          (atom s2*)))
+             ([]= (and (symbolp s1)
+                       (exprp s2)
+                       (exprp s3)
+                       (atom s3*)))
+             (for (and (symbolp s1)
+                       (natp s2)
+                       (natp s3)
+                       (stmtp s4)
+                       (atom s4*)))
+             (otherwise nil))))))
+                
+                
