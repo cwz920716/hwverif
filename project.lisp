@@ -11,7 +11,9 @@
 ;; arithmetics and "array indexing" operation. In theory, "array" can only be
 ;; applied to an acl2-array or list, or another well defined Halide function.
 ;; For the ease of explanation, we call a array or list of numbers as 'Buffer'
-;; and a Halide Function as 'Func' 
+;; and a Halide Function as 'Func'
+
+;; For now, we only support array indexing, excluding Func indexing
 
 ;; A legal expression can have following syntax in ACL2:
 ;; Expr = (<op> Expr Expr ...)  <op> can be anything like +/*/-/...
@@ -24,6 +26,7 @@
 
 (include-book "std/lists/top" :dir :system)
 
+;; a buffer is an integer list which is non-empty
 (defun bufferp (buf)
   (declare (xargs :guard t))
   (and (integer-listp buf)
@@ -74,7 +77,8 @@
                               (integerp x)
                               (integerp val))))
   (update-nth (bound x (length buf)) val buf))
-  
+
+;; A context is a list which only supports (symbol.integer) or (symbol.buffer)
 (defun contextp (x)
   (declare (xargs :guard t))
   (if (atom x)
@@ -85,6 +89,10 @@
            (or (integerp (cdr pair))
                (bufferp (cdr pair)))
            (contextp (cdr x))))))
+
+(defthm context-is-alist
+  (implies (contextp ctx)
+           (alistp ctx)))
 
 (defun exprp (e)
   (declare (xargs :guard t))
@@ -146,10 +154,26 @@
               (if (bufferp buf)
                   ([] buf (ifix (expr-eval (cadr args) c)))
                 (ifix buf))))
-        (alloca (repeat 0 (ifix (expr-eval (car args) c))))
+        (alloca (repeat (ifix (expr-eval (car args) c)) 0))
         (otherwise 0)))))
-                  
 
+(defun induct-rib (n)
+  (if (or (<= n 1)
+          (not (natp n)))
+      t
+    (induct-rib (- n 1))))
+
+(DEFTHM REPEAT-IS-BUF
+        (IMPLIES (AND (NATP N) (>= N 1))
+                 (BUFFERP (REPEAT N 0)))
+        :INSTRUCTIONS ((:INDUCT (INDUCT-RIB N))
+                       :BASH (:DV 1)
+                       (:DIVE 1)
+                       :UP
+                       :EXPAND :S
+                       :TOP :EXPAND
+                       :S :BASH))
+                
 (defun constant-fold (e)
   (declare (xargs
             :guard (exprp e))
@@ -219,8 +243,6 @@
 (defun halide-expr (e)
   (declare (xargs :guard (halidep e)))
   (cdr e))
-
-;; Above looks good
 
 (defun realize-at-1d (e id ctx)
   (declare (xargs :guard (and (natp id)
@@ -299,12 +321,12 @@
 ;;          (skip)
 ;;        = stmt ;; stmt
 ;;          (begin stmt stmt)
-;;        = assign symbol index val
-;;          ([]= symbol expr expr)
 ;;        = malloc symbol size
 ;;          (malloc symbol nat)
 ;;        = for symbol form nat to nat stmt
 ;;          (for symbol nat nat stmt)
+;;        = assign symbol index val
+;;          ([]= symbol expr expr)
 
 (defun stmtp (s)
   (declare (xargs :guard t))
@@ -327,16 +349,48 @@
                          (atom s2*)))
              (malloc (and (symbolp s1)
                           (natp s2)
+                          (> s2 0)
                           (atom s2*)))
-             ([]= (and (symbolp s1)
-                       (exprp s2)
-                       (exprp s3)
-                       (atom s3*)))
              (for (and (symbolp s1)
                        (natp s2)
                        (natp s3)
                        (stmtp s4)
                        (atom s4*)))
+             ([]= (and (symbolp s1)
+                       (exprp s2)
+                       (exprp s3)
+                       (atom s3*)))
              (otherwise nil))))))
+
+(defthm context-put-ok
+  (implies (and (symbolp name)
+                (bufferp buf)
+                (contextp ctx))
+           (contextp (put-assoc name buf ctx))))
                 
-                
+(defun exec-stmt (s ctx)
+  (declare (xargs :guard (and (stmtp s)
+                              (contextp ctx))))
+  (if (atom s)
+      ctx
+    (let* ((com (car s))
+                (args (cdr s))
+                (s1 (car args))
+                (s2 (cadr args))
+                (s2* (cddr args))
+                (s3 (car s2*))
+                (s3* (cdr s2*))
+                (s4 (car s3*))
+                (s4* (cdr s3*)))
+      (declare (ignore s3 s4 s4*))
+      (case com
+        (skip ctx)
+        (begin (exec-stmt s2
+                          (exec-stmt s1 ctx)))
+        (malloc (put-assoc s1
+                           (repeat s2 0)
+                           ctx))
+        ;; ignore []= for a bit
+        ;; how to handle for?
+        (otherwise ctx)))))
+           
