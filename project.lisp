@@ -26,6 +26,8 @@
 
 (include-book "std/lists/top" :dir :system)
 
+(include-book "std/strings/top" :dir :system)
+
 ;; a buffer is an integer list which is non-empty
 (defun bufferp (buf)
   (declare (xargs :guard t))
@@ -323,7 +325,7 @@
 ;;          (begin stmt stmt)
 ;;        = malloc symbol size
 ;;          (malloc symbol nat)
-;;        = for symbol form nat to nat stmt
+;;        = for symbol form base to base+extent stmt
 ;;          (for symbol nat nat stmt)
 ;;        = assign symbol index val
 ;;          ([]= symbol expr expr)
@@ -370,7 +372,8 @@
                 
 (defun exec-stmt (s ctx)
   (declare (xargs :guard (and (stmtp s)
-                              (contextp ctx))))
+                              (contextp ctx))
+                  :meausre (func))
   (if (atom s)
       ctx
     (let* ((com (car s))
@@ -382,7 +385,6 @@
                 (s3* (cdr s2*))
                 (s4 (car s3*))
                 (s4* (cdr s3*)))
-      (declare (ignore s3 s4 s4*))
       (case com
         (skip ctx)
         (begin (exec-stmt s2
@@ -392,5 +394,29 @@
                            ctx))
         ;; ignore []= for a bit
         ;; how to handle for?
+        (for (if (zp s3)
+                 ctx
+               (let* ((ctx-i (put-assoc s1 s2 ctx))
+                      (base-1i (+ s2 1))
+                      (extent-1i (1- s3))
+                      (body s4)
+                      (loop-i1 (cons com
+                                     (cons s1
+                                           (cons base-1i
+                                                 (cons extent-1i
+                                                       (cons body s4*))))))
+                      (ctx-1i (delete-assoc s1
+                                            (exec-stmt body ctx-i))))
+                 (exec-stmt loop-i1 ctx-1i))))
         (otherwise ctx)))))
            
+(defun si-2 (s idx)
+  (declare (xargs :guard (and
+                          (symbolp s)
+                          (integerp idx))))
+  (intern$ (STRING-APPEND
+            (STRING-APPEND
+             (SYMBOL-NAME S)
+             "_")
+            (STR::NATSTR (NFIX IDX)))
+           "ACL2"))
