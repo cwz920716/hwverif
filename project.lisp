@@ -397,7 +397,7 @@
 (defun stmt-measure (s)
   (declare (xargs :guard (stmtp s)))
   (if (atom s)
-      1
+      0
     (let* ((com (car s))
                 (args (cdr s))
                 (s1 (car args))
@@ -415,10 +415,15 @@
         (malloc 1)
         (for (if (zp s3)
                  1
-               (* s3 (stmt-measure s4))))
+               (* (1+ s3) (stmt-measure s4))))
         ([]= 1)
-        (otherwise 1)))))
-           
+        (otherwise 0)))))
+
+(defun stmt-m (s)
+  (declare (xargs :guard t))
+  (if (stmtp s)
+      (stmt-measure s)
+    0))
 
 (defun exec-stmt (s ctx)
   (declare (xargs :guard (and (stmtp s)
