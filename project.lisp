@@ -415,7 +415,7 @@
         (begin (+ (stmt-measure s1)
                   (stmt-measure s2)))
         (malloc 1)
-        (for (1+ (* s3 (stmt-measure s4))))
+        (for (1+ (* (nfix s3) (stmt-measure s4))))
         ([]= 1)
         (otherwise 0)))))
 
@@ -429,92 +429,6 @@
   (implies (stmtp s)
            (and (natp (stmt-measure s))
                 (> (stmt-measure s) 0))))
-
-;; (defthm non-stmt-measure-zp
-;;   (implies (not (stmtp s))
-;;            (zp (stmt-m s))))
-
-(defthm plus-le-comm
-  (implies (and (natp a)
-                (natp b)
-                (natp x)
-                (natp y)
-                (<= a x)
-                (<= b y))
-           (<= (+ a b)
-               (+ x y))))
-
-(defthm lt-le-comm
-  (implies (and (natp x)
-                (natp y)
-                (natp z)
-                (< x y)
-                (<= y z))
-           (< x
-              z)))
-
-(defthm le-lt-comm
-  (implies (and (natp x)
-                (natp y)
-                (natp z)
-                (<= x y)
-                (< y z))
-           (< x
-              z)))
-
-(defthm le-implies-lt-1
-  (implies (and (natp x)
-                (natp y)
-                (<= x y))
-           (< x (+ 1 y))))
-
-(defthm stmt-measure-helper-1
- (implies (and (natp a)
-               (natp b)
-               (natp c)
-               (< 0 c))
-          (< (+ a b)
-             (+ 1
-                (* c a)
-                (* c b)))))
-
-(defthm stmt-measure-helper-2
- (implies (and (natp a)
-               (natp b)
-               (natp c)
-               (< 0 c))
-          (<= (+ 1
-                 (* c a)
-                 (* c b))
-              (+ c
-                 (* c a)
-                 (* c b)))))
-
-(defthm stmt-measure-helper-3
- (implies (and (natp a)
-               (natp b)
-               (natp c)
-               (< 0 c))
-          (<= (* a b)
-              (* c a b))))
-
-(defthm stmt-measure-helper-4
- (implies (and (natp a)
-               (natp b)
-               (natp c)
-               (< 0 c))
-          (< (* a b c)
-              (+ c
-                 (* c a b)))))
-
-(DEFTHM STMT-MEASURE-HELPER-5
-        (IMPLIES (AND (NATP A) (NATP B) (NATP C) (< 0 C))
-                 (< (* A B) (+ C (* C A B))))
-        :INSTRUCTIONS ((:USE (:INSTANCE LE-LT-COMM (X (* A B))
-                                        (Y (* C A B))
-                                        (Z (+ C (* C A B)))))
-                       :PROVE))
-
 (defthm stmt-m-nat
   (natp (stmt-m s)))
 
