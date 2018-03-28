@@ -28,6 +28,17 @@
 
 (include-book "std/strings/top" :dir :system)
 
+(defun id-from-nat (s idx)
+  (declare (xargs :guard (and
+                          (symbolp s)
+                          (integerp idx))))
+  (intern$ (STRING-APPEND
+            (STRING-APPEND
+             (SYMBOL-NAME S)
+             "_")
+            (STR::NATSTR (NFIX IDX)))
+           "ACL2"))
+
 ;; a buffer is an integer list which is non-empty
 (defun bufferp (buf)
   (declare (xargs :guard t))
@@ -364,18 +375,57 @@
                        (atom s3*)))
              (otherwise nil))))))
 
+(DEFTHM STMT-IS-CONS
+        (IMPLIES (STMTP S) (CONSP S))
+        :INSTRUCTIONS (:PROMOTE :INDUCT :S))
+
+(DEFTHM CAR-STMT-OK
+        (IMPLIES (AND (STMTP S9)
+                      (NOT (EQUAL (CAR S9) 'SKIP))
+                      (NOT (EQUAL (CAR S9) 'BEGIN))
+                      (NOT (EQUAL (CAR S9) 'MALLOC))
+                      (NOT (EQUAL (CAR S9) 'FOR)))
+                 (EQUAL (CAR S9) '[]=))
+        :INSTRUCTIONS (:PROMOTE :INDUCT :S :S :S))
+
 (defthm context-put-ok
   (implies (and (symbolp name)
                 (bufferp buf)
                 (contextp ctx))
            (contextp (put-assoc name buf ctx))))
-                
+
+(defun stmt-measure (s)
+  (declare (xargs :guard (stmtp s)))
+  (if (atom s)
+      1
+    (let* ((com (car s))
+                (args (cdr s))
+                (s1 (car args))
+                (s2 (cadr args))
+                (s2* (cddr args))
+                (s3 (car s2*))
+                (s3* (cdr s2*))
+                (s4 (car s3*))
+                (s4* (cdr s3*)))
+      (declare (ignore s4*))
+      (case com
+        (skip 1)
+        (begin (+ (stmt-measure s1)
+                  (stmt-measure s2)))
+        (malloc 1)
+        (for (if (zp s3)
+                 1
+               (* s3 (stmt-measure s4))))
+        ([]= 1)
+        (otherwise 1)))))
+           
+
 (defun exec-stmt (s ctx)
   (declare (xargs :guard (and (stmtp s)
                               (contextp ctx))
-                  :meausre (func))
+                  :measure (stmt-measure s)))
   (if (atom s)
-      ctx
+      nil
     (let* ((com (car s))
                 (args (cdr s))
                 (s1 (car args))
@@ -398,7 +448,7 @@
                  ctx
                (let* ((ctx-i (put-assoc s1 s2 ctx))
                       (base-1i (+ s2 1))
-                      (extent-1i (1- s3))
+                      (extent-1i (nfix (1- s3)))
                       (body s4)
                       (loop-i1 (cons com
                                      (cons s1
@@ -408,15 +458,7 @@
                       (ctx-1i (delete-assoc s1
                                             (exec-stmt body ctx-i))))
                  (exec-stmt loop-i1 ctx-1i))))
-        (otherwise ctx)))))
+        ;; assignment is not implemented for now
+        ([]= ctx)
+        (otherwise nil)))))
            
-(defun si-2 (s idx)
-  (declare (xargs :guard (and
-                          (symbolp s)
-                          (integerp idx))))
-  (intern$ (STRING-APPEND
-            (STRING-APPEND
-             (SYMBOL-NAME S)
-             "_")
-            (STR::NATSTR (NFIX IDX)))
-           "ACL2"))
