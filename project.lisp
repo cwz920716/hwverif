@@ -28,7 +28,7 @@
 
 (include-book "std/strings/top" :dir :system)
 
-(local (include-book "arithmetic/top-with-meta" :dir :system))
+(include-book "arithmetic/top-with-meta" :dir :system)
 
 (defun id-from-nat (s idx)
   (declare (xargs :guard (and
@@ -336,11 +336,13 @@
 ;;          (skip)
 ;;        = stmt ;; stmt
 ;;          (begin stmt stmt)
-;;        = malloc symbol size
+;;        = symbol = malloc(size)
 ;;          (malloc symbol nat)
-;;        = for symbol form base by extent iterations do stmt
-;;          (for symbol nat nat stmt)
-;;        = assign symbol index val
+;;        = for (int symbol = nat1; symbol = nat1 + nat2; symbol++) {
+;;              stmt
+;;          }
+;;          (for symbol nat1 nat2 stmt)
+;;        = symbol[index] = val
 ;;          ([]= symbol expr expr)
 
 (defun stmtp (s)
@@ -390,14 +392,24 @@
                  (EQUAL (CAR S9) '[]=))
         :INSTRUCTIONS (:PROMOTE :INDUCT :S :S :S))
 
-(defthm context-put-ok
+(defthm context-put-buf-ok
   (implies (and (symbolp name)
                 (bufferp buf)
                 (contextp ctx))
            (contextp (put-assoc name buf ctx))))
 
+(defthm context-put-nat-ok
+  (implies (and (symbolp name)
+                (natp n)
+                (contextp ctx))
+           (contextp (put-assoc name n ctx))))
+
+(defthm context-del-ok
+  (implies (and (symbolp name)
+                (contextp ctx))
+           (contextp (delete-assoc name ctx))))
+
 (defun stmt-measure (s)
-  (declare (xargs :guard (stmtp s)))
   (if (atom s)
       0
     (let* ((com (car s))
@@ -412,32 +424,33 @@
       (declare (ignore s4*))
       (case com
         (skip 1)
-        (begin (+ (stmt-measure s1)
+        (begin (+ 1
+                  (stmt-measure s1)
                   (stmt-measure s2)))
         (malloc 1)
-        (for (1+ (* (nfix s3) (stmt-measure s4))))
-        ([]= 1)
-        (otherwise 0)))))
-
-(defun stmt-m (s)
-  (declare (xargs :guard t))
-  (if (stmtp s)
-      (stmt-measure s)
-    0))
+        (for (+ 1
+                (nfix s3)
+                (stmt-measure s4)
+                (* (nfix s3) (stmt-measure s4))))
+        ([]= (+ 1
+                (stmt-measure (car s))
+                (stmt-measure (cdr s))))
+        (otherwise  (+ 1
+                       (stmt-measure (car s))
+                       (stmt-measure (cdr s))))
+        ))))
 
 (defthm stmt-measure-pos
   (implies (stmtp s)
-           (and (natp (stmt-measure s))
+           (and (integerp (stmt-measure s))
                 (> (stmt-measure s) 0))))
-(defthm stmt-m-nat
-  (natp (stmt-m s)))
 
 (defun exec-stmt (s ctx)
-  (declare (xargs :guard (and (stmtp s)
-                              (contextp ctx))
-                  :measure (stmt-m s)))
-  (if (atom s)
-      nil
+  (declare (xargs ;; :guard (and (stmtp s) (contextp ctx))
+            :measure (stmt-measure s)))
+  (if (not (and (contextp ctx)
+                (stmtp s)))
+      ctx
     (let* ((com (car s))
                 (args (cdr s))
                 (s1 (car args))
@@ -461,16 +474,19 @@
                (let* ((ctx-i (put-assoc s1 s2 ctx))
                       (base-1i (+ s2 1))
                       (extent-1i (nfix (1- s3)))
-                      (body s4)
                       (loop-i1 (cons com
                                      (cons s1
                                            (cons base-1i
                                                  (cons extent-1i
-                                                       (cons body s4*))))))
-                      (ctx-1i (delete-assoc s1
-                                            (exec-stmt body ctx-i))))
+                                                       (cons s4 s4*))))))
+                      ;; TODO: Should I delete s1 from ctx-1i?
+                      (ctx-1i (exec-stmt s4 ctx-i)))
                  (exec-stmt loop-i1 ctx-1i))))
         ;; assignment is not implemented for now
         ([]= ctx)
-        (otherwise nil)))))
-           
+        (otherwise ctx)))))
+
+(defthm exec-stmt-type-ok
+  (implies (and (stmtp s)
+                (contextp ctx))
+           (contextp (exec-stmt s ctx))))
