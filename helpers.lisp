@@ -1,3 +1,19 @@
+(defun realize-1d-inner (e size id ctx)
+  (declare (xargs :guard (and (halide-1dp e)
+                              (natp size)
+                              (natp id)
+                              (contextp ctx))))
+  (if (zp size)
+      nil
+    (cons (realize-at-1d e id ctx)
+          (realize-1d-inner e (1- size) (1+ id) ctx))))
+
+(defun realize-1d (e size ctx)
+  (declare (xargs :guard (and (halide-1dp e)
+                              (natp size)
+                              (contextp ctx))))
+  (realize-1d-inner e size 0 ctx))
+
 
 (include-book "arithmetic/top-with-meta" :dir :system)
 

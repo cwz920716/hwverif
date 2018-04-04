@@ -122,6 +122,23 @@
   (implies (contextp ctx)
            (alistp ctx)))
 
+(defthm context-put-buf-ok
+  (implies (and (symbolp name)
+                (bufferp buf)
+                (contextp ctx))
+           (contextp (put-assoc name buf ctx))))
+
+(defthm context-put-nat-ok
+  (implies (and (symbolp name)
+                (natp n)
+                (contextp ctx))
+           (contextp (put-assoc name n ctx))))
+
+(defthm context-del-ok
+  (implies (and (symbolp name)
+                (contextp ctx))
+           (contextp (delete-assoc name ctx))))
+
 (defun exprp (e)
   (declare (xargs :guard t))
   (if (atom e)
@@ -158,6 +175,47 @@
              (otherwise nil))
            ))
     ))
+
+(defun no-free-vars (e c)
+  (declare (xargs :guard (and (exprp e)
+                              (contextp c))))
+  (if (atom e)
+      (if (symbolp e)
+          (let ((has_key (assoc e c)))
+            (consp has_key))
+        t)
+    (let ((fn (car e))
+          (args (cdr e)))
+      (case fn
+        (- (no-free-vars (car args) c))
+        (+ (and (no-free-vars (car args) c)
+                (no-free-vars (cadr args) c)))
+        (* (and (no-free-vars (car args) c)
+                (no-free-vars (cadr args) c)))
+        ([] (and (no-free-vars (car args) c)
+                 (no-free-vars (cadr args) c)))
+        (alloca t)
+        (otherwise nil)))))
+
+(defun not-use-symbol (e s)
+  (declare (xargs :guard (and (exprp e)
+                              (symbolp s))))
+  (if (atom e)
+      (if (symbolp e)
+          (not (equal e s)) 
+        t)
+    (let ((fn (car e))
+          (args (cdr e)))
+      (case fn
+        (- (not-use-symbol (car args) s))
+        (+ (and (not-use-symbol (car args) s)
+                (not-use-symbol (cadr args) s)))
+        (* (and (not-use-symbol (car args) s)
+                (not-use-symbol (cadr args) s)))
+        ([] (and (not-use-symbol (car args) s)
+                 (not-use-symbol (cadr args) s)))
+        (alloca t)
+        (otherwise nil)))))
 
 (defun expr-eval (e c)
   (declare (xargs :guard
@@ -258,6 +316,8 @@
        (symbolp (caar e))
        (symbol-listp (cdar e))
        (= (len (cdar e)) 1)
+       (not (equal (caar e)
+                   (car (cdar e))))
        (exprp (cdr e))))
 
 (defun halide-funcname (e)
@@ -344,6 +404,92 @@
            (equal (len (realize-1d e N ctx))
                   N)))
 
+(defun declared-in (sym ctx)
+  (declare (xargs :guard (and (symbolp sym)
+                              (contextp ctx))))
+  (consp (assoc sym ctx)))
+
+(defun declared-nat (sym ctx)
+  (declare (xargs :guard (and (symbolp sym)
+                              (contextp ctx))))
+  (let ((sa (assoc sym ctx)))
+    (and (consp sa)
+         (natp (cdr sa)))))
+
+(defun declared-buf (sym ctx)
+  (declare (xargs :guard (and (symbolp sym)
+                              (contextp ctx))))
+  (let ((sa (assoc sym ctx)))
+    (and (consp sa)
+         (bufferp (cdr sa)))))
+
+(defun simulate-1d-update (e ctx)
+  (declare (xargs :guard (and (halide-1dp e)
+                              (contextp ctx)
+                              (declared-buf (halide-funcname e) ctx)
+                              (declared-nat (car (halide-dims e)) ctx)
+                              )))
+  (let* ((fname (halide-funcname e))
+         (dim0 (car (halide-dims e)))
+         (buf (cdr (assoc fname ctx)))
+         (idx (cdr (assoc dim0 ctx))))
+    (if (bufferp buf)
+        (put-assoc fname
+                   ([]= buf
+                        (ifix idx)
+                        (ifix (expr-eval (halide-expr e) ctx)))
+                   ctx)
+      ctx)))
+
+(verify (implies (and (halide-1dp e)
+                (contextp ctx)
+                (declared-buf (halide-funcname e) ctx)
+                (declared-nat (car (halide-dims e)) ctx))
+           (contextp (simulate-1d-update e ctx))))
+
+(defthm sim-1d-update-type-ok
+  (implies (and (halide-1dp e)
+                (contextp ctx)
+                (declared-buf (halide-funcname e) ctx)
+                (declared-nat (car (halide-dims e)) ctx))
+           (contextp (simulate-1d-update e ctx)))
+  :hints (("Goal"
+           :do-not-induct t)))
+
+(defun simulate-1d-for (e base extent ctx)
+  (declare (xargs :guard (and (natp base)
+                              (natp extent)
+                              (contextp ctx)
+                              (declared-buf (halide-funcname e) ctx)
+                              (halide-1dp e))
+                  :verify-guards nil))
+  (if (zp extent)
+      ctx
+    (let* ((dim0 (car (halide-dims e)))
+           (ctx-i (put-assoc dim0 base ctx))
+           (base-1i (+ base 1))
+           (extent-1i (1- extent))
+           (ctx-1i (delete-assoc dim0
+                                 (simulate-1d-update e ctx-i))))
+      (simulate-1d-for e base-1i extent-1i ctx-1i))))
+
+(verify (implies (and (natp base)
+                      (natp extent)
+                      (contextp ctx)
+                      (declared-buf (halide-funcname e) ctx)
+                      (halide-1dp e))
+                 (contextp 
+
+(defun simulate-1d (e size ctx)
+  (declare (xargs :guard (and (halide-1dp e)
+                              (natp size)
+                              (< 0 size)
+                              (contextp ctx))))
+  (let* ((ctx-init (put-assoc (halide-funcname e)
+                              (repeat size 0)
+                              ctx)))
+    (simulate-1d-for e 0 size ctx-init)))
+
 ;; A halide IR is a C-like internal format:
 ;;   stmt = skip
 ;;          (skip)
@@ -404,23 +550,6 @@
                       (NOT (EQUAL (CAR S9) 'FOR)))
                  (EQUAL (CAR S9) '[]=))
         :INSTRUCTIONS (:PROMOTE :INDUCT :S :S :S))
-
-(defthm context-put-buf-ok
-  (implies (and (symbolp name)
-                (bufferp buf)
-                (contextp ctx))
-           (contextp (put-assoc name buf ctx))))
-
-(defthm context-put-nat-ok
-  (implies (and (symbolp name)
-                (natp n)
-                (contextp ctx))
-           (contextp (put-assoc name n ctx))))
-
-(defthm context-del-ok
-  (implies (and (symbolp name)
-                (contextp ctx))
-           (contextp (delete-assoc name ctx))))
 
 (defun stmt-measure (s)
   (if (atom s)
@@ -550,55 +679,10 @@
                                        'x)
                                  10 nil)))
 
-(defun no-free-vars (e c)
-  (declare (xargs :guard (and (exprp e)
-                              (contextp c))))
-  (if (atom e)
-      (if (symbolp e)
-          (let ((has_key (assoc e c)))
-            (consp has_key))
-        t)
-    (let ((fn (car e))
-          (args (cdr e)))
-      (case fn
-        (- (no-free-vars (car args) c))
-        (+ (and (no-free-vars (car args) c)
-                (no-free-vars (cadr args) c)))
-        (* (and (no-free-vars (car args) c)
-                (no-free-vars (cadr args) c)))
-        ([] (and (no-free-vars (car args) c)
-                 (no-free-vars (cadr args) c)))
-        (alloca t)
-        (otherwise nil)))))
-
-(defun not-use-symbol (e s)
-  (declare (xargs :guard (and (exprp e)
-                              (symbolp s))))
-  (if (atom e)
-      (if (symbolp e)
-          (not (equal e s)) 
-        t)
-    (let ((fn (car e))
-          (args (cdr e)))
-      (case fn
-        (- (not-use-symbol (car args) s))
-        (+ (and (not-use-symbol (car args) s)
-                (not-use-symbol (cadr args) s)))
-        (* (and (not-use-symbol (car args) s)
-                (not-use-symbol (cadr args) s)))
-        ([] (and (not-use-symbol (car args) s)
-                 (not-use-symbol (cadr args) s)))
-        (alloca t)
-        (otherwise nil)))))
-
-(defun declared-in (sym ctx)
-  (declare (xargs :guard (and (symbolp sym)
-                              (contextp ctx))))
-  (consp (assoc sym ctx)))
-
 (verify (implies
          (and (exprp expr)
               (natp n)
+              (natp b)
               (< 0 n)
               (contextp ctx)
               (no-free-vars expr ctx)
@@ -607,9 +691,9 @@
                       (assoc 'f
                              (exec-stmt (list 'begin
                                               (list 'malloc 'f n)
-                                              (list 'for 'i 0 n
+                                              (list 'for 'i b n
                                                     (list '[]= 'f 'i expr)))
                                         ctx)))
-                     (realize-1d (cons '(f i)
-                                       expr)
-                                 n ctx))))
+                (realize-1d-inner (cons '(f i)
+                                        expr)
+                                  n b ctx))))
