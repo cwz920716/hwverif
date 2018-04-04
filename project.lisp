@@ -47,6 +47,10 @@
   (and (integer-listp buf)
        (< 0 (length buf))))
 
+(defthm buf-not-nil
+  (implies (bufferp buf)
+           (not (atom buf))))
+
 ;; bound will make any input integer p to be within interval [0, N)
 (defun bound (p N)
   (declare (xargs :guard (and (integerp p)
@@ -91,7 +95,16 @@
   (declare (xargs :guard (and (bufferp buf)
                               (integerp x)
                               (integerp val))))
-  (update-nth (bound x (length buf)) val buf))
+  (if (and (<= 0 x)
+           (< x (length buf)))
+      (update-nth x val buf)
+    buf))
+
+(defthm update-buf-ok
+    (implies (and (bufferp buf)
+                  (integerp n1)
+                  (integerp n2))
+             (bufferp ([]= buf n1 n2))))
 
 ;; A context is a list which only supports (symbol.integer) or (symbol.buffer)
 (defun contextp (x)
@@ -140,8 +153,8 @@
                       (exprp arg2)))
              (alloca (and (consp args)
                           (atom (cdr args))
-                          (natp arg1)))
-             
+                          (natp arg1)
+                          (< 0 arg1)))             
              (otherwise nil))
            ))
     ))
@@ -265,8 +278,8 @@
                               (contextp ctx))))
   (let* ((dim0 (car (halide-dims e)))
          (rhs (halide-expr e))
-         (idp (cons dim0 id)))
-    (ifix (expr-eval rhs (cons idp ctx)))))
+         (new-ctx (put-assoc dim0 id ctx)))
+    (ifix (expr-eval rhs new-ctx))))
 
 (assert-event (equal 3
                      (realize-at-1d (cons '(f x)
@@ -446,10 +459,10 @@
                 (> (stmt-measure s) 0))))
 
 (defun exec-stmt (s ctx)
-  (declare (xargs ;; :guard (and (stmtp s) (contextp ctx))
+  (declare (xargs :guard (and (stmtp s) (contextp ctx))
+                  :verify-guards nil
             :measure (stmt-measure s)))
-  (if (not (and (contextp ctx)
-                (stmtp s)))
+  (if (atom s)
       ctx
     (let* ((com (car s))
                 (args (cdr s))
@@ -480,13 +493,123 @@
                                                  (cons extent-1i
                                                        (cons s4 s4*))))))
                       ;; TODO: Should I delete s1 from ctx-1i?
-                      (ctx-1i (exec-stmt s4 ctx-i)))
+                      (ctx-1i (delete-assoc s1
+                                            (exec-stmt s4 ctx-i))))
                  (exec-stmt loop-i1 ctx-1i))))
-        ;; assignment is not implemented for now
-        ([]= ctx)
+        ([]= (let* ((buf-assoc (assoc s1 ctx))
+                    (buf (cdr buf-assoc)))
+               (if (and (consp buf-assoc)
+                        (bufferp buf))
+                   (put-assoc s1
+                              ([]= buf
+                                   (ifix (expr-eval s2 ctx))
+                                   (ifix (expr-eval s3 ctx)))
+                              ctx)
+                 ctx)))
         (otherwise ctx)))))
 
-(defthm exec-stmt-type-ok
-  (implies (and (stmtp s)
-                (contextp ctx))
-           (contextp (exec-stmt s ctx))))
+(DEFTHM EXEC-STMT-TYPE-OK
+        (IMPLIES (AND (STMTP S) (CONTEXTP CTX))
+                 (CONTEXTP (EXEC-STMT S CTX)))
+        :INSTRUCTIONS (:INDUCT :PROVE :PROVE :PROMOTE (:DIVE 1)
+                               :X
+                               :TOP :PROVE
+                               :PROVE :PROVE
+                               :PROVE :PROVE
+                               :PROVE :PROVE))
+
+(defthm exec-stmt-guards-helper1
+(IMPLIES (AND (CONTEXTP CTX)
+              S (TRUE-LISTP S)
+              (SYMBOLP (CADR S))
+              (EXPRP (CADDR S))
+              (EXPRP (CADDDR S))
+              (NOT (CDDDDR S))
+              (EQUAL (CAR S) '[]=)
+              (NOT (CONSP (ASSOC-EQUAL (CADR S) CTX))))
+         (NOT (ASSOC-EQUAL (CADR S) CTX))))
+
+(verify-guards exec-stmt
+  :hints (("Goal"
+           :do-not-induct t)))
+
+(assert-event (equal (cons '(f 0 0 1 0 0)
+                           (cons (cons 'i 2) nil))
+                     (exec-stmt (list '[]= 'f 'i 1)
+                                (cons '(f 0 0 0 0 0)
+                                      (cons (cons 'i 2) nil)))))
+
+(assert-event (equal (cdr
+                      (assoc 'f
+                             (exec-stmt (list 'begin
+                                              (list 'malloc 'f 10)
+                                              (list 'for 'i 0 10
+                                                    (list '[]= 'f 'i 'i)))
+                                        nil)))
+                     (realize-1d (cons '(f x)
+                                       'x)
+                                 10 nil)))
+
+(defun no-free-vars (e c)
+  (declare (xargs :guard (and (exprp e)
+                              (contextp c))))
+  (if (atom e)
+      (if (symbolp e)
+          (let ((has_key (assoc e c)))
+            (consp has_key))
+        t)
+    (let ((fn (car e))
+          (args (cdr e)))
+      (case fn
+        (- (no-free-vars (car args) c))
+        (+ (and (no-free-vars (car args) c)
+                (no-free-vars (cadr args) c)))
+        (* (and (no-free-vars (car args) c)
+                (no-free-vars (cadr args) c)))
+        ([] (and (no-free-vars (car args) c)
+                 (no-free-vars (cadr args) c)))
+        (alloca t)
+        (otherwise nil)))))
+
+(defun not-use-symbol (e s)
+  (declare (xargs :guard (and (exprp e)
+                              (symbolp s))))
+  (if (atom e)
+      (if (symbolp e)
+          (not (equal e s)) 
+        t)
+    (let ((fn (car e))
+          (args (cdr e)))
+      (case fn
+        (- (not-use-symbol (car args) s))
+        (+ (and (not-use-symbol (car args) s)
+                (not-use-symbol (cadr args) s)))
+        (* (and (not-use-symbol (car args) s)
+                (not-use-symbol (cadr args) s)))
+        ([] (and (not-use-symbol (car args) s)
+                 (not-use-symbol (cadr args) s)))
+        (alloca t)
+        (otherwise nil)))))
+
+(defun declared-in (sym ctx)
+  (declare (xargs :guard (and (symbolp sym)
+                              (contextp ctx))))
+  (consp (assoc sym ctx)))
+
+(verify (implies
+         (and (exprp expr)
+              (natp n)
+              (< 0 n)
+              (contextp ctx)
+              (no-free-vars expr ctx)
+              (not-use-symbol expr 'f))
+         (equal (cdr
+                      (assoc 'f
+                             (exec-stmt (list 'begin
+                                              (list 'malloc 'f n)
+                                              (list 'for 'i 0 n
+                                                    (list '[]= 'f 'i expr)))
+                                        ctx)))
+                     (realize-1d (cons '(f i)
+                                       expr)
+                                 n ctx))))
