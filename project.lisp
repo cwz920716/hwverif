@@ -24,22 +24,22 @@
 
 ;; For milestone 0.1, we build an evaluator for halide expression.
 
-(include-book "std/lists/top" :dir :system)
+;(include-book "std/lists/top" :dir :system)
 
-(include-book "std/strings/top" :dir :system)
+;(include-book "std/strings/top" :dir :system)
 
-(include-book "arithmetic/top-with-meta" :dir :system)
+;(include-book "arithmetic/top-with-meta" :dir :system)
 
-(defun id-from-nat (s idx)
-  (declare (xargs :guard (and
-                          (symbolp s)
-                          (integerp idx))))
-  (intern$ (STRING-APPEND
-            (STRING-APPEND
-             (SYMBOL-NAME S)
-             "_")
-            (STR::NATSTR (NFIX IDX)))
-           "ACL2"))
+;(defun id-from-nat (s idx)
+;  (declare (xargs :guard (and
+;                          (symbolp s)
+;                          (integerp idx))))
+;  (intern$ (STRING-APPEND
+;            (STRING-APPEND
+;             (SYMBOL-NAME S)
+;             "_")
+;            (STR::NATSTR (NFIX IDX)))
+;           "ACL2"))
 
 ;; a buffer is an integer list which is non-empty
 (defun bufferp (buf)
@@ -106,6 +106,13 @@
                   (integerp n2))
              (bufferp ([]= buf n1 n2))))
 
+(defthm update-buf-ok-2
+    (implies (and (bufferp buf)
+                  (integerp n1)
+                  (integerp n2)
+                  (<= 0 n1)
+                  (< n1 (length buf)))
+             (bufferp (update-nth n1 n2 buf))))
 ;; A context is a list which only supports (symbol.integer) or (symbol.buffer)
 (defun contextp (x)
   (declare (xargs :guard t))
@@ -138,6 +145,40 @@
   (implies (and (symbolp name)
                 (contextp ctx))
            (contextp (delete-assoc name ctx))))
+
+(defun declared-buf (sym ctx)
+  (declare (xargs :guard (and (symbolp sym)
+                              (contextp ctx))))
+  (let ((sa (assoc sym ctx)))
+    (and (consp sa)
+         (bufferp (cdr sa)))))
+
+(defun declared-int (sym ctx)
+  (declare (xargs :guard (and (symbolp sym)
+                              (contextp ctx))))
+  (let ((sa (assoc sym ctx)))
+    (and (consp sa)
+         (integerp (cdr sa)))))
+
+(defthm buf-declared-after-update-idx
+  (implies (and (contextp ctx)
+                (symbolp dim0)
+                (symbolp fname)
+                (not (equal fname dim0))
+                (declared-int dim0 ctx)
+                (integerp dim0)
+                (declared-buf fname ctx))
+           (declared-buf fname (put-assoc dim0 idx ctx))))
+
+(defthm buf-declared-after-delete-idx
+  (implies (and (contextp ctx)
+                (symbolp dim0)
+                (symbolp fname)
+                (not (equal fname dim0))
+                (declared-int dim0 ctx)
+                (integerp dim0)
+                (declared-buf fname ctx))
+           (declared-buf fname (delete-assoc dim0 ctx))))
 
 (defun exprp (e)
   (declare (xargs :guard t))
@@ -216,6 +257,8 @@
                  (not-use-symbol (cadr args) s)))
         (alloca t)
         (otherwise nil)))))
+
+(local (include-book "std/lists/repeat" :dir :system))
 
 (defun expr-eval (e c)
   (declare (xargs :guard
@@ -328,6 +371,10 @@
   (declare (xargs :guard (halidep e)))
   (cdar e))
 
+(defun halide-dim0 (e)
+  (declare (xargs :guard (halidep e)))
+  (car (halide-dims e)))
+
 (defun halide-expr (e)
   (declare (xargs :guard (halidep e)))
   (cdr e))
@@ -404,36 +451,18 @@
            (equal (len (realize-1d e N ctx))
                   N)))
 
-(defun declared-in (sym ctx)
-  (declare (xargs :guard (and (symbolp sym)
-                              (contextp ctx))))
-  (consp (assoc sym ctx)))
-
-(defun declared-nat (sym ctx)
-  (declare (xargs :guard (and (symbolp sym)
-                              (contextp ctx))))
-  (let ((sa (assoc sym ctx)))
-    (and (consp sa)
-         (natp (cdr sa)))))
-
-(defun declared-buf (sym ctx)
-  (declare (xargs :guard (and (symbolp sym)
-                              (contextp ctx))))
-  (let ((sa (assoc sym ctx)))
-    (and (consp sa)
-         (bufferp (cdr sa)))))
-
 (defun simulate-1d-update (e ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (contextp ctx)
                               (declared-buf (halide-funcname e) ctx)
-                              (declared-nat (car (halide-dims e)) ctx)
+                              (declared-int (car (halide-dims e)) ctx)
                               )))
   (let* ((fname (halide-funcname e))
          (dim0 (car (halide-dims e)))
          (buf (cdr (assoc fname ctx)))
          (idx (cdr (assoc dim0 ctx))))
-    (if (bufferp buf)
+    (if (and (bufferp buf)
+             (integerp idx))
         (put-assoc fname
                    ([]= buf
                         (ifix idx)
@@ -441,28 +470,116 @@
                    ctx)
       ctx)))
 
-(verify (implies (and (halide-1dp e)
-                (contextp ctx)
-                (declared-buf (halide-funcname e) ctx)
-                (declared-nat (car (halide-dims e)) ctx))
-           (contextp (simulate-1d-update e ctx))))
+(defthm sim-1d-update-type-ok-helper
+    (implies (and (bufferp buf)
+                  (integerp n1)
+                  (integerp n2)
+                  (<= 0 n1)
+                  (< n1 (length buf))
+                  (symbolp name)
+                  (contextp ctx))
+             (contextp (put-assoc name
+                                  (update-nth n1 n2 buf)
+                                  ctx))))
 
 (defthm sim-1d-update-type-ok
   (implies (and (halide-1dp e)
                 (contextp ctx)
                 (declared-buf (halide-funcname e) ctx)
-                (declared-nat (car (halide-dims e)) ctx))
+                (declared-int (car (halide-dims e)) ctx))
            (contextp (simulate-1d-update e ctx)))
   :hints (("Goal"
            :do-not-induct t)))
 
+(DEFTHM
+ BUF-DECLARED-AFTER-SIM-1D-UPDATE-HELPER1
+ (IMPLIES
+   (AND (CONSP E)
+        (CONSP (CAR E))
+        (SYMBOLP (CAR (CAR E)))
+        (SYMBOL-LISTP (CDR (CAR E)))
+        (EQUAL (LEN (CDR (CAR E))) 1)
+        (NOT (EQUAL (CAR (CAR E)) (CADR (CAR E))))
+        (EXPRP (CDR E))
+        (CONTEXTP CTX)
+        (CONSP (ASSOC-EQUAL (CAR (CAR E)) CTX))
+        (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX)))
+        (< 0
+           (LEN (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))))
+        (CONSP (ASSOC-EQUAL (CADR (CAR E)) CTX))
+        (INTEGERP (CDR (ASSOC-EQUAL (CADR (CAR E)) CTX)))
+        (< (CDR (ASSOC-EQUAL (CADR (CAR E)) CTX))
+           0))
+   (CONSP (ASSOC-EQUAL (CAR (CAR E))
+                       (PUT-ASSOC-EQUAL (CAR (CAR E))
+                                        (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))
+                                        CTX))))
+ :INSTRUCTIONS (:PROVE))
+
+(DEFTHM
+ BUF-DECLARED-AFTER-SIM-1D-UPDATE-HELPER2
+ (IMPLIES
+  (AND (CONSP E)
+       (CONSP (CAR E))
+       (SYMBOLP (CAR (CAR E)))
+       (SYMBOL-LISTP (CDR (CAR E)))
+       (EQUAL (LEN (CDR (CAR E))) 1)
+       (NOT (EQUAL (CAR (CAR E)) (CADR (CAR E))))
+       (EXPRP (CDR E))
+       (CONTEXTP CTX)
+       (CONSP (ASSOC-EQUAL (CAR (CAR E)) CTX))
+       (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX)))
+       (< 0
+          (LEN (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))))
+       (CONSP (ASSOC-EQUAL (CADR (CAR E)) CTX))
+       (INTEGERP (CDR (ASSOC-EQUAL (CADR (CAR E)) CTX)))
+       (< (CDR (ASSOC-EQUAL (CADR (CAR E)) CTX))
+          0))
+  (INTEGER-LISTP
+     (CDR (ASSOC-EQUAL (CAR (CAR E))
+                       (PUT-ASSOC-EQUAL (CAR (CAR E))
+                                        (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))
+                                        CTX)))))
+ :INSTRUCTIONS (:PROVE))
+
+(defthm buf-declared-after-sim-1d-update
+  (implies (and (halide-1dp e)
+                (contextp ctx)
+                (declared-buf (halide-funcname e) ctx)
+                (declared-int (car (halide-dims e)) ctx))
+           (declared-buf (halide-funcname e)
+                         (simulate-1d-update e ctx)))
+  :hints (("Goal"
+           :do-not-induct t)))
+
+(defthm int-declared-after-put
+  (implies (and (contextp ctx)
+                (integerp n)
+                (halide-1dp e))
+           (declared-int (car (halide-dims e))
+                         (put-assoc (car (halide-dims e))
+                                    n
+                                    ctx))))
+
+(defthm buf-declared-after-sim-1d-update-put-int
+  (implies (and (halide-1dp e)
+                (contextp ctx)
+                (integerp n)
+                (declared-buf (halide-funcname e) ctx)
+                (equal ctx2
+                       (put-assoc (halide-dim0 e) n ctx))
+                )
+           (declared-buf (halide-funcname e)
+                         (simulate-1d-update e ctx2)))
+  :hints (("Goal" :do-not-induct t)))
+
 (defun simulate-1d-for (e base extent ctx)
-  (declare (xargs :guard (and (natp base)
+  (declare (xargs :guard (and (integerp base)
                               (natp extent)
                               (contextp ctx)
                               (declared-buf (halide-funcname e) ctx)
                               (halide-1dp e))
-                  :verify-guards nil))
+                  ))
   (if (zp extent)
       ctx
     (let* ((dim0 (car (halide-dims e)))
@@ -473,12 +590,25 @@
                                  (simulate-1d-update e ctx-i))))
       (simulate-1d-for e base-1i extent-1i ctx-1i))))
 
-(verify (implies (and (natp base)
-                      (natp extent)
-                      (contextp ctx)
-                      (declared-buf (halide-funcname e) ctx)
-                      (halide-1dp e))
-                 (contextp 
+(defthm simulate-1d-for-helper1
+  (implies (and (halide-1dp e)
+                (contextp ctx)
+                (integerp n)
+                (declared-buf (halide-funcname e) ctx))
+           (declared-buf (halide-funcname e)
+                         (delete-assoc (car (halide-dims e))
+                                       (simulate-1d-update
+                                        e (put-assoc (car (halide-dims e))
+                                                     n ctx)))))
+  :hints (("Goal" :do-not-induct t)))
+
+(defthm simulate-1d-for-type-ok
+  (implies (and (natp base)
+                (natp extent)
+                (contextp ctx)
+                (declared-buf (halide-funcname e) ctx)
+                (halide-1dp e))
+           (contextp (simulate-1d-for e base extent ctx))))
 
 (defun simulate-1d (e size ctx)
   (declare (xargs :guard (and (halide-1dp e)

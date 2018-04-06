@@ -1,3 +1,69 @@
+
+
+(defthm simulate-1d-for-helper--3
+(IMPLIES
+   (AND (CONSP E)
+        (CONSP (CAR E))
+        (SYMBOLP (CAR (CAR E)))
+        (SYMBOL-LISTP (CDR (CAR E)))
+        (EQUAL (LEN (CDR (CAR E))) 1)
+        (NOT (EQUAL (CAR (CAR E)) (CADR (CAR E))))
+        (EXPRP (CDR E))
+        (CONTEXTP CTX)
+        (INTEGERP N)
+        (CONSP (ASSOC-EQUAL (CAR (CAR E)) CTX))
+        (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX)))
+        (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))
+        (NOT (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E))
+                                              (PUT-ASSOC-EQUAL (CADR (CAR E))
+                                                               N CTX))))))
+   (INTEGER-LISTP
+        (CDR (ASSOC-EQUAL (CAR (CAR E))
+                          (DELETE-ASSOC-EQUAL (CADR (CAR E))
+                                              (PUT-ASSOC-EQUAL (CADR (CAR E))
+                                                               N CTX)))))))
+
+(defthm simulate-1d-for-helper--2
+(IMPLIES
+   (AND (CONSP E)
+        (CONSP (CAR E))
+        (SYMBOLP (CAR (CAR E)))
+        (SYMBOL-LISTP (CDR (CAR E)))
+        (EQUAL (LEN (CDR (CAR E))) 1)
+        (NOT (EQUAL (CAR (CAR E)) (CADR (CAR E))))
+        (EXPRP (CDR E))
+        (CONTEXTP CTX)
+        (INTEGERP N)
+        (CONSP (ASSOC-EQUAL (CAR (CAR E)) CTX))
+        (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX)))
+        (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))
+        (NOT (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E))
+                                              (PUT-ASSOC-EQUAL (CADR (CAR E))
+                                                               N CTX))))))
+   (CONSP (ASSOC-EQUAL (CAR (CAR E))
+                       (DELETE-ASSOC-EQUAL (CADR (CAR E))
+                                           (PUT-ASSOC-EQUAL (CADR (CAR E))
+                                                            N CTX))))))
+
+
+(defthm simulate-1d-for-helper--1
+(IMPLIES (AND (CONSP E)
+              (CONSP (CAR E))
+              (SYMBOLP (CAR (CAR E)))
+              (SYMBOL-LISTP (CDR (CAR E)))
+              (EQUAL (LEN (CDR (CAR E))) 1)
+              (NOT (EQUAL (CAR (CAR E)) (CADR (CAR E))))
+              (EXPRP (CDR E))
+              (CONTEXTP CTX)
+              (INTEGERP N)
+              (CONSP (ASSOC-EQUAL (CAR (CAR E)) CTX))
+              (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX)))
+              (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX)))
+         (CONSP (ASSOC-EQUAL (CADR (CAR E))
+                             (PUT-ASSOC-EQUAL (CADR (CAR E))
+                                              N CTX)))))
+
+
 (defun realize-1d-inner (e size id ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (natp size)
