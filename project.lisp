@@ -44,12 +44,20 @@
 ;; a buffer is an integer list which is non-empty
 (defun bufferp (buf)
   (declare (xargs :guard t))
+  (and (consp buf)
+       (integer-listp buf)))
+
+#||
+(defun bufferp (buf)
+  (declare (xargs :guard t))
   (and (integer-listp buf)
        (< 0 (length buf))))
 
 (defthm buf-not-nil
   (implies (bufferp buf)
            (not (atom buf))))
+||#
+
 
 ;; bound will make any input integer p to be within interval [0, N)
 (defun bound (p N)
@@ -179,6 +187,18 @@
                 (integerp dim0)
                 (declared-buf fname ctx))
            (declared-buf fname (delete-assoc dim0 ctx))))
+
+(defthm buf-declared-after-put-buf
+  (implies (and (contextp ctx)
+                (symbolp fname)
+                (bufferp buf))
+           (declared-buf fname (put-assoc fname buf ctx))))
+
+(defthm int-declared-after-put-int
+  (implies (and (contextp ctx)
+                (symbolp dim0)
+                (integerp n))
+           (declared-int dim0 (put-assoc dim0 n ctx))))
 
 (defun exprp (e)
   (declare (xargs :guard t))
@@ -491,6 +511,15 @@
   :hints (("Goal"
            :do-not-induct t)))
 
+(defthm int-declared-after-put
+  (implies (and (contextp ctx)
+                (integerp n)
+                (halide-1dp e))
+           (declared-int (car (halide-dims e))
+                         (put-assoc (car (halide-dims e))
+                                    n
+                                    ctx))))
+
 (DEFTHM
  BUF-DECLARED-AFTER-SIM-1D-UPDATE-HELPER1
  (IMPLIES
@@ -551,15 +580,6 @@
                          (simulate-1d-update e ctx)))
   :hints (("Goal"
            :do-not-induct t)))
-
-(defthm int-declared-after-put
-  (implies (and (contextp ctx)
-                (integerp n)
-                (halide-1dp e))
-           (declared-int (car (halide-dims e))
-                         (put-assoc (car (halide-dims e))
-                                    n
-                                    ctx))))
 
 (defthm buf-declared-after-sim-1d-update-put-int
   (implies (and (halide-1dp e)
