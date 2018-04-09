@@ -47,6 +47,25 @@
   (and (consp buf)
        (integer-listp buf)))
 
+(local (include-book "std/lists/repeat" :dir :system))
+
+(defun induct-rib (n)
+  (if (or (<= n 1)
+          (not (natp n)))
+      t
+    (induct-rib (- n 1))))
+
+(DEFTHM REPEAT-IS-BUF
+        (IMPLIES (AND (NATP N) (>= N 1))
+                 (BUFFERP (REPEAT N 0)))
+        :INSTRUCTIONS ((:INDUCT (INDUCT-RIB N))
+                       :BASH (:DV 1)
+                       (:DIVE 1)
+                       :UP
+                       :EXPAND :S
+                       :TOP :EXPAND
+                       :S :BASH))
+
 #||
 (defun bufferp (buf)
   (declare (xargs :guard t))
@@ -237,49 +256,6 @@
            ))
     ))
 
-(defun no-free-vars (e c)
-  (declare (xargs :guard (and (exprp e)
-                              (contextp c))))
-  (if (atom e)
-      (if (symbolp e)
-          (let ((has_key (assoc e c)))
-            (consp has_key))
-        t)
-    (let ((fn (car e))
-          (args (cdr e)))
-      (case fn
-        (- (no-free-vars (car args) c))
-        (+ (and (no-free-vars (car args) c)
-                (no-free-vars (cadr args) c)))
-        (* (and (no-free-vars (car args) c)
-                (no-free-vars (cadr args) c)))
-        ([] (and (no-free-vars (car args) c)
-                 (no-free-vars (cadr args) c)))
-        (alloca t)
-        (otherwise nil)))))
-
-(defun not-use-symbol (e s)
-  (declare (xargs :guard (and (exprp e)
-                              (symbolp s))))
-  (if (atom e)
-      (if (symbolp e)
-          (not (equal e s)) 
-        t)
-    (let ((fn (car e))
-          (args (cdr e)))
-      (case fn
-        (- (not-use-symbol (car args) s))
-        (+ (and (not-use-symbol (car args) s)
-                (not-use-symbol (cadr args) s)))
-        (* (and (not-use-symbol (car args) s)
-                (not-use-symbol (cadr args) s)))
-        ([] (and (not-use-symbol (car args) s)
-                 (not-use-symbol (cadr args) s)))
-        (alloca t)
-        (otherwise nil)))))
-
-(local (include-book "std/lists/repeat" :dir :system))
-
 (defun expr-eval (e c)
   (declare (xargs :guard
                   (and (exprp e)
@@ -305,61 +281,6 @@
                 (ifix buf))))
         (alloca (repeat (ifix (expr-eval (car args) c)) 0))
         (otherwise 0)))))
-
-(defun induct-rib (n)
-  (if (or (<= n 1)
-          (not (natp n)))
-      t
-    (induct-rib (- n 1))))
-
-(DEFTHM REPEAT-IS-BUF
-        (IMPLIES (AND (NATP N) (>= N 1))
-                 (BUFFERP (REPEAT N 0)))
-        :INSTRUCTIONS ((:INDUCT (INDUCT-RIB N))
-                       :BASH (:DV 1)
-                       (:DIVE 1)
-                       :UP
-                       :EXPAND :S
-                       :TOP :EXPAND
-                       :S :BASH))
-                
-(defun constant-fold (e)
-  (declare (xargs
-            :guard (exprp e))
-            ;; :measure (...)
-           )
-  (if (atom e)
-      e
-    (let* ((fn (car e))
-           (args (cdr e))
-           (arg1 (car args))
-           (arg1* (cdr args))
-           (arg2 (cadr args))
-           (arg2* (cddr args))
-           (v1 (constant-fold arg1))
-           (v2 (constant-fold arg2)))
-      (case fn
-        (- (if (integerp v1) (- v1) (cons fn (cons v1 arg1*))))
-        (+ (if (and (integerp v1)
-                    (integerp v2))
-               (+ v1 v2)
-             (cons fn (cons v1 (cons v2 arg2*)))))
-        (* (if (and (integerp v1)
-                    (integerp v2))
-               (* v1 v2)
-             (cons fn (cons v1 (cons v2 arg2*)))))
-        ([] (cons fn (cons v1 (cons v2 arg2*))))
-        (alloca (cons fn (cons v1 arg1*)))
-        (otherwise e)))))
-
-(defthm constant-fold-expr (implies (exprp e)
-                                    (exprp (constant-fold e))))
-
-(defthm constant-fold-is-correct
-  (implies (and (exprp e)
-                (contextp a))
-           (equal (expr-eval (constant-fold e) a)
-                  (expr-eval e a))))
 
 ;; A halide program has three components: A symbolic name, a symblic list for
 ;; dimentional vars, and a expression for pure definition
@@ -399,78 +320,6 @@
   (declare (xargs :guard (halidep e)))
   (cdr e))
 
-(defun realize-at-1d (e id ctx)
-  (declare (xargs :guard (and (natp id)
-                              (halide-1dp e)
-                              (contextp ctx))))
-  (let* ((dim0 (car (halide-dims e)))
-         (rhs (halide-expr e))
-         (new-ctx (put-assoc dim0 id ctx)))
-    (ifix (expr-eval rhs new-ctx))))
-
-(assert-event (equal 3
-                     (realize-at-1d (cons '(f x)
-                                          '(+ x (* x 2)))
-                                    1 nil)))
-
-(assert-event (equal 63
-                     (realize-at-1d (cons '(f x)
-                                          '(* x (+ x 2)))
-                                    7 nil)))
-
-(assert-event (equal 5
-                     (realize-at-1d (cons '(f x)
-                                          '([] input x))
-                                    4
-                                    (cons '(input 1 1 2 3 5 8 13)
-                                          nil)
-                                    )))
-
-(defthm realize-type-correct
-  (implies (and (halidep e)
-                (natp i)
-                (contextp ctx))
-           (integerp (realize-at-1d e i ctx))))
-
-(defun realize-1d-inner (e size id ctx)
-  (declare (xargs :guard (and (halide-1dp e)
-                              (natp size)
-                              (natp id)
-                              (contextp ctx))))
-  (if (zp size)
-      nil
-    (cons (realize-at-1d e id ctx)
-          (realize-1d-inner e (1- size) (1+ id) ctx))))
-
-(defun realize-1d (e size ctx)
-  (declare (xargs :guard (and (halide-1dp e)
-                              (natp size)
-                              (contextp ctx))))
-  (realize-1d-inner e size 0 ctx))
-
-(defun induct-risz (n)
-  (if (zp n)
-      0
-    (1+ (induct-risz (1- n)))))
-
-(defthm realize-inner-size-good
-  (implies (and (halide-1dp e)
-                (natp N)
-                (natp i)
-                (contextp ctx))
-           (equal (len (realize-1d-inner e N i ctx))
-                  N))
-  :hints (("Goal"
-           :induct (induct-risz N)))
-  )
-
-(defthm realize-size-good
-  (implies (and (halide-1dp e)
-                (natp N)
-                (contextp ctx))
-           (equal (len (realize-1d e N ctx))
-                  N)))
-
 (defun simulate-1d-update (e ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (contextp ctx)
@@ -490,115 +339,13 @@
                    ctx)
       ctx)))
 
-(defthm sim-1d-update-type-ok-helper
-    (implies (and (bufferp buf)
-                  (integerp n1)
-                  (integerp n2)
-                  (<= 0 n1)
-                  (< n1 (length buf))
-                  (symbolp name)
-                  (contextp ctx))
-             (contextp (put-assoc name
-                                  (update-nth n1 n2 buf)
-                                  ctx))))
-
-(defthm sim-1d-update-type-ok
-  (implies (and (halide-1dp e)
-                (contextp ctx)
-                (declared-buf (halide-funcname e) ctx)
-                (declared-int (car (halide-dims e)) ctx))
-           (contextp (simulate-1d-update e ctx)))
-  :hints (("Goal"
-           :do-not-induct t)))
-
-(defthm int-declared-after-put
-  (implies (and (contextp ctx)
-                (integerp n)
-                (halide-1dp e))
-           (declared-int (car (halide-dims e))
-                         (put-assoc (car (halide-dims e))
-                                    n
-                                    ctx))))
-
-(DEFTHM
- BUF-DECLARED-AFTER-SIM-1D-UPDATE-HELPER1
- (IMPLIES
-   (AND (CONSP E)
-        (CONSP (CAR E))
-        (SYMBOLP (CAR (CAR E)))
-        (SYMBOL-LISTP (CDR (CAR E)))
-        (EQUAL (LEN (CDR (CAR E))) 1)
-        (NOT (EQUAL (CAR (CAR E)) (CADR (CAR E))))
-        (EXPRP (CDR E))
-        (CONTEXTP CTX)
-        (CONSP (ASSOC-EQUAL (CAR (CAR E)) CTX))
-        (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX)))
-        (< 0
-           (LEN (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))))
-        (CONSP (ASSOC-EQUAL (CADR (CAR E)) CTX))
-        (INTEGERP (CDR (ASSOC-EQUAL (CADR (CAR E)) CTX)))
-        (< (CDR (ASSOC-EQUAL (CADR (CAR E)) CTX))
-           0))
-   (CONSP (ASSOC-EQUAL (CAR (CAR E))
-                       (PUT-ASSOC-EQUAL (CAR (CAR E))
-                                        (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))
-                                        CTX))))
- :INSTRUCTIONS (:PROVE))
-
-(DEFTHM
- BUF-DECLARED-AFTER-SIM-1D-UPDATE-HELPER2
- (IMPLIES
-  (AND (CONSP E)
-       (CONSP (CAR E))
-       (SYMBOLP (CAR (CAR E)))
-       (SYMBOL-LISTP (CDR (CAR E)))
-       (EQUAL (LEN (CDR (CAR E))) 1)
-       (NOT (EQUAL (CAR (CAR E)) (CADR (CAR E))))
-       (EXPRP (CDR E))
-       (CONTEXTP CTX)
-       (CONSP (ASSOC-EQUAL (CAR (CAR E)) CTX))
-       (INTEGER-LISTP (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX)))
-       (< 0
-          (LEN (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))))
-       (CONSP (ASSOC-EQUAL (CADR (CAR E)) CTX))
-       (INTEGERP (CDR (ASSOC-EQUAL (CADR (CAR E)) CTX)))
-       (< (CDR (ASSOC-EQUAL (CADR (CAR E)) CTX))
-          0))
-  (INTEGER-LISTP
-     (CDR (ASSOC-EQUAL (CAR (CAR E))
-                       (PUT-ASSOC-EQUAL (CAR (CAR E))
-                                        (CDR (ASSOC-EQUAL (CAR (CAR E)) CTX))
-                                        CTX)))))
- :INSTRUCTIONS (:PROVE))
-
-(defthm buf-declared-after-sim-1d-update
-  (implies (and (halide-1dp e)
-                (contextp ctx)
-                (declared-buf (halide-funcname e) ctx)
-                (declared-int (car (halide-dims e)) ctx))
-           (declared-buf (halide-funcname e)
-                         (simulate-1d-update e ctx)))
-  :hints (("Goal"
-           :do-not-induct t)))
-
-(defthm buf-declared-after-sim-1d-update-put-int
-  (implies (and (halide-1dp e)
-                (contextp ctx)
-                (integerp n)
-                (declared-buf (halide-funcname e) ctx)
-                (equal ctx2
-                       (put-assoc (halide-dim0 e) n ctx))
-                )
-           (declared-buf (halide-funcname e)
-                         (simulate-1d-update e ctx2)))
-  :hints (("Goal" :do-not-induct t)))
-
 (defun simulate-1d-for (e base extent ctx)
   (declare (xargs :guard (and (integerp base)
                               (natp extent)
                               (contextp ctx)
                               (declared-buf (halide-funcname e) ctx)
                               (halide-1dp e))
+                  :verify-guards nil
                   ))
   (if (zp extent)
       ctx
@@ -610,35 +357,17 @@
                                  (simulate-1d-update e ctx-i))))
       (simulate-1d-for e base-1i extent-1i ctx-1i))))
 
-(defthm simulate-1d-for-helper1
-  (implies (and (halide-1dp e)
-                (contextp ctx)
-                (integerp n)
-                (declared-buf (halide-funcname e) ctx))
-           (declared-buf (halide-funcname e)
-                         (delete-assoc (car (halide-dims e))
-                                       (simulate-1d-update
-                                        e (put-assoc (car (halide-dims e))
-                                                     n ctx)))))
-  :hints (("Goal" :do-not-induct t)))
-
-(defthm simulate-1d-for-type-ok
-  (implies (and (natp base)
-                (natp extent)
-                (contextp ctx)
-                (declared-buf (halide-funcname e) ctx)
-                (halide-1dp e))
-           (contextp (simulate-1d-for e base extent ctx))))
-
-(defun simulate-1d (e size ctx)
+(defun simulate-1d (e base size ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (natp size)
+                              (natp base)
                               (< 0 size)
-                              (contextp ctx))))
+                              (contextp ctx))
+                  :verify-guards nil))
   (let* ((ctx-init (put-assoc (halide-funcname e)
                               (repeat size 0)
                               ctx)))
-    (simulate-1d-for e 0 size ctx-init)))
+    (simulate-1d-for e base size ctx-init)))
 
 ;; A halide IR is a C-like internal format:
 ;;   stmt = skip
@@ -687,19 +416,6 @@
                        (exprp s3)
                        (atom s3*)))
              (otherwise nil))))))
-
-(DEFTHM STMT-IS-CONS
-        (IMPLIES (STMTP S) (CONSP S))
-        :INSTRUCTIONS (:PROMOTE :INDUCT :S))
-
-(DEFTHM CAR-STMT-OK
-        (IMPLIES (AND (STMTP S9)
-                      (NOT (EQUAL (CAR S9) 'SKIP))
-                      (NOT (EQUAL (CAR S9) 'BEGIN))
-                      (NOT (EQUAL (CAR S9) 'MALLOC))
-                      (NOT (EQUAL (CAR S9) 'FOR)))
-                 (EQUAL (CAR S9) '[]=))
-        :INSTRUCTIONS (:PROMOTE :INDUCT :S :S :S))
 
 (defun stmt-measure (s)
   (if (atom s)
@@ -818,16 +534,14 @@
                                 (cons '(f 0 0 0 0 0)
                                       (cons (cons 'i 2) nil)))))
 
-(assert-event (equal (cdr
-                      (assoc 'f
-                             (exec-stmt (list 'begin
-                                              (list 'malloc 'f 10)
-                                              (list 'for 'i 0 10
-                                                    (list '[]= 'f 'i 'i)))
-                                        nil)))
-                     (realize-1d (cons '(f x)
-                                       'x)
-                                 10 nil)))
+(assert-event (equal (exec-stmt (list 'begin
+                                      (list 'malloc 'f 10)
+                                      (list 'for 'i 0 10
+                                            (list '[]= 'f 'i 'i)))
+                                nil)
+                     (simulate-1d (cons '(f x)
+                                        'x)
+                                  0 10 nil)))
 
 (verify (implies
          (and (exprp expr)
@@ -835,15 +549,14 @@
               (natp b)
               (< 0 n)
               (contextp ctx)
-              (no-free-vars expr ctx)
-              (not-use-symbol expr 'f))
-         (equal (cdr
-                      (assoc 'f
-                             (exec-stmt (list 'begin
-                                              (list 'malloc 'f n)
-                                              (list 'for 'i b n
-                                                    (list '[]= 'f 'i expr)))
-                                        ctx)))
-                (realize-1d-inner (cons '(f i)
-                                        expr)
-                                  n b ctx))))
+              ;;(no-free-vars expr ctx)
+              ;;(not-use-symbol expr 'f)
+              )
+         (equal (exec-stmt (list 'begin
+                                 (list 'malloc 'f n)
+                                 (list 'for 'i b n
+                                       (list '[]= 'f 'i expr)))
+                           ctx)
+                (simulate-1d (cons '(f i)
+                                   expr)
+                             b n ctx))))
