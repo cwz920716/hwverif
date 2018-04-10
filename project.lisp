@@ -66,17 +66,6 @@
                        :TOP :EXPAND
                        :S :BASH))
 
-#||
-(defun bufferp (buf)
-  (declare (xargs :guard t))
-  (and (integer-listp buf)
-       (< 0 (length buf))))
-
-(defthm buf-not-nil
-  (implies (bufferp buf)
-           (not (atom buf))))
-||#
-
 
 ;; bound will make any input integer p to be within interval [0, N)
 (defun bound (p N)
@@ -133,13 +122,14 @@
                   (integerp n2))
              (bufferp ([]= buf n1 n2))))
 
-(defthm update-buf-ok-2
+(defthm update-nth-buf-ok
     (implies (and (bufferp buf)
                   (integerp n1)
                   (integerp n2)
                   (<= 0 n1)
                   (< n1 (length buf)))
              (bufferp (update-nth n1 n2 buf))))
+
 ;; A context is a list which only supports (symbol.integer) or (symbol.buffer)
 (defun contextp (x)
   (declare (xargs :guard t))
@@ -162,9 +152,9 @@
                 (contextp ctx))
            (contextp (put-assoc name buf ctx))))
 
-(defthm context-put-nat-ok
+(defthm context-put-int-ok
   (implies (and (symbolp name)
-                (natp n)
+                (integerp n)
                 (contextp ctx))
            (contextp (put-assoc name n ctx))))
 
@@ -219,6 +209,16 @@
                 (integerp n))
            (declared-int dim0 (put-assoc dim0 n ctx))))
 
+;;;
+(defthm equal-after-put-ctx
+  (implies (and (contextp ctx)
+                (symbolp k)
+                (or (integerp v)
+                    (bufferp v))
+                )
+           (equal (assoc k (put-assoc k v ctx))
+                  v)))
+
 (defun exprp (e)
   (declare (xargs :guard t))
   (if (atom e)
@@ -256,6 +256,26 @@
            ))
     ))
 
+(defun not-use-symbol (e s)
+  (declare (xargs :guard (and (exprp e)
+                              (symbolp s))))
+  (if (atom e)
+      (if (symbolp e)
+          (not (equal e s)) 
+        t)
+    (let ((fn (car e))
+          (args (cdr e)))
+      (case fn
+        (- (not-use-symbol (car args) s))
+        (+ (and (not-use-symbol (car args) s)
+                (not-use-symbol (cadr args) s)))
+        (* (and (not-use-symbol (car args) s)
+                (not-use-symbol (cadr args) s)))
+        ([] (and (not-use-symbol (car args) s)
+                 (not-use-symbol (cadr args) s)))
+        (alloca t)
+        (otherwise nil)))))
+
 (defun expr-eval (e c)
   (declare (xargs :guard
                   (and (exprp e)
@@ -290,19 +310,11 @@
        (consp (car e))
        (symbolp (caar e))
        (symbol-listp (cdar e))
-       (> (len (cdar e)) 0)
-       (exprp (cdr e))))
-
-(defun halide-1dp (e)
-  (declare (xargs :guard t))
-  (and (consp e)
-       (consp (car e))
-       (symbolp (caar e))
-       (symbol-listp (cdar e))
-       (= (len (cdar e)) 1)
-       (not (equal (caar e)
-                   (car (cdar e))))
-       (exprp (cdr e))))
+       (no-duplicatesp (cdar e))
+       (consp (cdar e))
+       (exprp (cdr e))
+       (not-use-symbol (cdr e) (caar e))
+       ))
 
 (defun halide-funcname (e)
   (declare (xargs :guard (halidep e)))
@@ -319,6 +331,12 @@
 (defun halide-expr (e)
   (declare (xargs :guard (halidep e)))
   (cdr e))
+
+(defun halide-1dp (e)
+  (declare (xargs :guard t))
+  (and (halidep e)
+       (atom (cddar e))
+       ))
 
 (defun simulate-1d-update (e ctx)
   (declare (xargs :guard (and (halide-1dp e)
@@ -338,6 +356,24 @@
                         (ifix (expr-eval (halide-expr e) ctx)))
                    ctx)
       ctx)))
+
+(defthm contextp-after-sim-1d-update
+  (implies (and (halide-1dp e)
+                (contextp ctx)
+                )
+           (contextp (simulate-1d-update e ctx)))
+  :hints (("Goal"
+           :do-not-induct t)))
+
+(defthm buf-declared-after-sim-1d-update
+  (implies (and (halide-1dp e)
+                (contextp ctx)
+                (declared-buf (halide-funcname e) ctx)
+                (declared-int (car (halide-dims e)) ctx))
+           (declared-buf (halide-funcname e)
+                         (simulate-1d-update e ctx)))
+  :hints (("Goal"
+           :do-not-induct t)))
 
 (defun simulate-1d-for (e base extent ctx)
   (declare (xargs :guard (and (integerp base)
@@ -549,7 +585,6 @@
               (natp b)
               (< 0 n)
               (contextp ctx)
-              ;;(no-free-vars expr ctx)
               ;;(not-use-symbol expr 'f)
               )
          (equal (exec-stmt (list 'begin
