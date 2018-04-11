@@ -145,22 +145,57 @@
   (implies (contextp ctx)
            (alistp ctx)))
 
+(defun put-ctx (k v ctx)
+  (declare (xargs :guard (and (symbolp k)
+                              (or (integerp v)
+                                  (bufferp v))
+                              (contextp ctx))))
+  (if (endp ctx)
+      (list (cons k v))
+    (if (equal k (caar ctx))
+        (cons (cons k v) (cdr ctx))
+      (cons (car ctx)
+            (put-ctx k v (cdr ctx))))))
+
+(defthm put-assoc-ctx-ok
+  (implies (and (symbolp k)
+                (or (integerp v)
+                    (bufferp v))
+                (contextp ctx))
+           (equal (put-assoc k v ctx)
+                  (put-ctx k v ctx))))
+
+(defun delete-ctx (k ctx)
+  (declare (xargs :guard (and (symbolp k)
+                              (contextp ctx))))
+  (if (endp ctx)
+      nil
+    (if (equal k (caar ctx))
+        (cdr ctx)
+      (cons (car ctx) (delete-ctx k (cdr ctx))))))
+
+(defthm delete-ctx-ctx-ok
+  (implies (and (symbolp k)
+                (contextp ctx))
+           (equal (delete-assoc k ctx)
+                  (delete-ctx k ctx))))
+
 (defthm context-put-buf-ok
   (implies (and (symbolp name)
                 (bufferp buf)
                 (contextp ctx))
-           (contextp (put-assoc name buf ctx))))
+           (contextp (put-ctx name buf ctx))))
 
 (defthm context-put-int-ok
   (implies (and (symbolp name)
                 (integerp n)
                 (contextp ctx))
-           (contextp (put-assoc name n ctx))))
+           (contextp (put-ctx name n ctx))))
 
 (defthm context-del-ok
   (implies (and (symbolp name)
                 (contextp ctx))
-           (contextp (delete-assoc name ctx))))
+           (contextp (delete-ctx name ctx))))
 
 (defun declared-buf (sym ctx)
   (declare (xargs :guard (and (symbolp sym)
@@ -169,12 +204,28 @@
     (and (consp sa)
          (bufferp (cdr sa)))))
 
+(defthm declared-buf-ok
+  (implies (and (symbolp s)
+                (contextp ctx)
+                (declared-buf s ctx))
+           (and (consp (assoc s ctx))
+                (bufferp (cdr (assoc s ctx))))
+           ))
+
 (defun declared-int (sym ctx)
   (declare (xargs :guard (and (symbolp sym)
                               (contextp ctx))))
   (let ((sa (assoc sym ctx)))
     (and (consp sa)
          (integerp (cdr sa)))))
+
+(defthm declared-int-ok
+  (implies (and (symbolp s)
+                (contextp ctx)
+                (declared-int s ctx))
+           (and (consp (assoc s ctx))
+                (integerp (cdr (assoc s ctx))))
+           ))
 
 (defthm exist-after-put-ctx
   (implies (and (contextp ctx)
@@ -183,7 +234,7 @@
                     (bufferp v))
                 )
            (consp (assoc k
-                         (put-assoc k v ctx))))
+                         (put-ctx k v ctx))))
   )
 
 (defthm equal-after-put-ctx
@@ -192,7 +243,7 @@
                 (or (integerp v)
                     (bufferp v))
                 )
-           (equal (cdr (assoc k (put-assoc k v ctx)))
+           (equal (cdr (assoc k (put-ctx k v ctx)))
                   v)))
 
 (defthm exist-after-del-k2
@@ -203,7 +254,7 @@
                 (consp (assoc k1 ctx))
                 )
            (consp (assoc k1
-                         (delete-assoc k2 ctx)))))
+                         (delete-ctx k2 ctx)))))
 
 (defthm unchanged-after-del-k2
   (implies (and (contextp ctx)
@@ -215,7 +266,7 @@
                        v)
                 )
            (equal (cdr (assoc k1
-                              (delete-assoc k2 ctx)))
+                              (delete-ctx k2 ctx)))
                   v)))
 
 (defthm exist-after-put-k2
@@ -228,7 +279,7 @@
                     (bufferp v2))
                 )
            (consp (assoc k1
-                         (put-assoc k2 v2 ctx)))))
+                         (put-ctx k2 v2 ctx)))))
 
 (defthm unchanged-after-put-k2
   (implies (and (contextp ctx)
@@ -242,20 +293,20 @@
                     (bufferp v2))
                 )
            (equal (cdr (assoc k1
-                              (put-assoc k2 v2 ctx)))
+                              (put-ctx k2 v2 ctx)))
                   v)))
 
 (defthm buf-declared-after-put-buf
   (implies (and (contextp ctx)
                 (symbolp fname)
                 (bufferp buf))
-           (declared-buf fname (put-assoc fname buf ctx))))
+           (declared-buf fname (put-ctx fname buf ctx))))
 
 (defthm int-declared-after-put-int
   (implies (and (contextp ctx)
                 (symbolp dim0)
                 (integerp n))
-           (declared-int dim0 (put-assoc dim0 n ctx))))
+           (declared-int dim0 (put-ctx dim0 n ctx))))
 
 (defthm buf-declared-after-update-idx
   (implies (and (contextp ctx)
@@ -264,7 +315,7 @@
                 (not (equal fname dim0))
                 (integerp idx)
                 (declared-buf fname ctx))
-           (declared-buf fname (put-assoc dim0 idx ctx))))
+           (declared-buf fname (put-ctx dim0 idx ctx))))
 
 (defthm buf-declared-after-delete-idx
   (implies (and (contextp ctx)
@@ -272,7 +323,7 @@
                 (symbolp fname)
                 (not (equal fname dim0))
                 (declared-buf fname ctx))
-           (declared-buf fname (delete-assoc dim0 ctx))))
+           (declared-buf fname (delete-ctx dim0 ctx))))
 
 (defun exprp (e)
   (declare (xargs :guard t))
@@ -402,19 +453,24 @@
                               (contextp ctx)
                               (declared-buf (halide-funcname e) ctx)
                               (declared-int (halide-dim0 e) ctx)
-                              )))
+                              )
+                  :verify-guards nil))
   (let* ((fname (halide-funcname e))
          (dim0 (halide-dim0 e))
          (buf (cdr (assoc fname ctx)))
          (idx (cdr (assoc dim0 ctx))))
     (if (and (bufferp buf)
              (integerp idx))
-        (put-assoc fname
+        (put-ctx fname
                    ([]= buf
                         (ifix idx)
                         (ifix (expr-eval (halide-expr e) ctx)))
                    ctx)
       ctx)))
+
+;; get stuck
+(verify-guards simulate-1d-update
+              :hints (("Goal" :do-not-induct t)))
 
 (defthm contextp-after-sim-1d-update
   (implies (and (halide-1dp e)
@@ -440,7 +496,7 @@
                       (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
                       (INTEGERP BASE))
                  (DECLARED-BUF (HALIDE-FUNCNAME E)
-                               (PUT-ASSOC (HALIDE-DIM0 E) BASE CTX)))
+                               (PUT-CTX (HALIDE-DIM0 E) BASE CTX)))
         :INSTRUCTIONS
         (:PROMOTE :S-PROP
                   (:USE (:INSTANCE BUF-DECLARED-AFTER-UPDATE-IDX (CTX CTX)
@@ -510,11 +566,11 @@
                 (integerp base)
                 (declared-buf (halide-funcname e) ctx)
                 )
-           (contextp (delete-assoc
+           (contextp (delete-ctx
                       (halide-dim0 e)
                       (simulate-1d-update
                        e
-                       (put-assoc (halide-dim0 e)
+                       (put-ctx (halide-dim0 e)
                                   base
                                   ctx))))))
 
@@ -522,20 +578,70 @@
 (defun simulate-1d-for (e base extent ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (integerp base)
-                              (integerp extent)
+                              (natp extent)
                               (contextp ctx)
                               (declared-buf (halide-funcname e) ctx))
-                  :verify-guards nil
+                  :verify-guards t
                   ))
   (if (zp extent)
       ctx
     (let* ((dim0 (car (halide-dims e)))
-           (ctx-i (put-assoc dim0 base ctx))
+           (ctx-i (put-ctx dim0 base ctx))
            (base-1i (+ base 1))
-           (extent-1i (1- extent))
-           (ctx-1i (delete-assoc dim0
+           (extent-1i (nfix (- extent 1)))
+           (ctx-1i (delete-ctx dim0
                                  (simulate-1d-update e ctx-i))))
       (simulate-1d-for e base-1i extent-1i ctx-1i))))
+
+(defthm test
+ (IMPLIES
+  (AND (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
+       (CONTEXTP CTX)
+       (NATP EXTENT)
+       (INTEGERP BASE)
+       (HALIDE-1DP E)
+       (NOT (ZP EXTENT)))
+  (LET
+   ((DIM0 (CAR (HALIDE-DIMS E))))
+   (AND
+    (LET ((NAME DIM0) (VAL BASE) (ALIST CTX))
+         (AND (OR (NOT (EQLABLEP NAME))
+                  (ALISTP ALIST))
+              (OR (EQLABLEP NAME)
+                  (EQLABLE-ALISTP ALIST))
+              (EQUAL (PUT-ASSOC-EQUAL NAME VAL ALIST)
+                     (PUT-ASSOC-EQL-EXEC NAME VAL ALIST))))
+    (LET
+     ((CTX-I (PUT-ASSOC-EQUAL DIM0 BASE CTX)))
+     (AND
+      (ACL2-NUMBERP BASE)
+      (LET
+       ((BASE-1I (+ BASE 1)))
+       (AND
+        (ACL2-NUMBERP EXTENT)
+        (LET
+         ((EXTENT-1I (+ -1 EXTENT)))
+         (AND
+          (HALIDE-1DP E)
+          (DECLARED-BUF (HALIDE-FUNCNAME E) CTX-I)
+          (CONTEXTP CTX-I)
+          (DECLARED-INT (HALIDE-DIM0 E) CTX-I)
+          (LET ((KEY DIM0)
+                (ALIST (SIMULATE-1D-UPDATE E CTX-I)))
+               (AND (OR (NOT (EQLABLEP KEY)) (ALISTP ALIST))
+                    (OR (EQLABLEP KEY)
+                        (EQLABLE-ALISTP ALIST))
+                    (EQUAL (DELETE-ASSOC-EQUAL KEY ALIST)
+                           (DELETE-ASSOC-EQL-EXEC KEY ALIST))))
+          (LET
+            ((CTX-1I (DELETE-ASSOC-EQUAL DIM0 (SIMULATE-1D-UPDATE E CTX-I))))
+            (AND (HALIDE-1DP E)
+                 (DECLARED-BUF (HALIDE-FUNCNAME E)
+                               CTX-1I)
+                 (NATP EXTENT-1I)
+                 (INTEGERP BASE-1I)
+                 (CONTEXTP CTX-1I))))))))))))
+  )
 
 (verify-guards simulate-1d-for
               :hints (("Goal" :do-not-induct t)))
@@ -575,7 +681,7 @@
                               (< 0 size)
                               (contextp ctx))
                   :verify-guards nil))
-  (let* ((ctx-init (put-assoc (halide-funcname e)
+  (let* ((ctx-init (put-ctx (halide-funcname e)
                               (repeat size 0)
                               ctx)))
     (simulate-1d-for e base size ctx-init)))
@@ -683,14 +789,14 @@
         (skip ctx)
         (begin (exec-stmt s2
                           (exec-stmt s1 ctx)))
-        (malloc (put-assoc s1
+        (malloc (put-ctx s1
                            (repeat s2 0)
                            ctx))
         ;; ignore []= for a bit
         ;; how to handle for?
         (for (if (zp s3)
                  ctx
-               (let* ((ctx-i (put-assoc s1 s2 ctx))
+               (let* ((ctx-i (put-ctx s1 s2 ctx))
                       (base-1i (+ s2 1))
                       (extent-1i (nfix (1- s3)))
                       (loop-i1 (cons com
@@ -699,14 +805,14 @@
                                                  (cons extent-1i
                                                        (cons s4 s4*))))))
                       ;; TODO: Should I delete s1 from ctx-1i?
-                      (ctx-1i (delete-assoc s1
+                      (ctx-1i (delete-ctx s1
                                             (exec-stmt s4 ctx-i))))
                  (exec-stmt loop-i1 ctx-1i))))
         ([]= (let* ((buf-assoc (assoc s1 ctx))
                     (buf (cdr buf-assoc)))
                (if (and (consp buf-assoc)
                         (bufferp buf))
-                   (put-assoc s1
+                   (put-ctx s1
                               ([]= buf
                                    (ifix (expr-eval s2 ctx))
                                    (ifix (expr-eval s3 ctx)))
