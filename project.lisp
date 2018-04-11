@@ -51,12 +51,12 @@
 
 (defun induct-rib (n)
   (if (or (<= n 1)
-          (not (natp n)))
+          (not (integerp n)))
       t
     (induct-rib (- n 1))))
 
 (DEFTHM REPEAT-IS-BUF
-        (IMPLIES (AND (NATP N) (>= N 1))
+        (IMPLIES (AND (INTEGERP N) (>= N 1))
                  (BUFFERP (REPEAT N 0)))
         :INSTRUCTIONS ((:INDUCT (INDUCT-RIB N))
                        :BASH (:DV 1)
@@ -66,11 +66,10 @@
                        :TOP :EXPAND
                        :S :BASH))
 
-
 ;; bound will make any input integer p to be within interval [0, N)
 (defun bound (p N)
   (declare (xargs :guard (and (integerp p)
-                              (natp N))))
+                              (integerp N))))
   (if (< N 0)
       -1
     (if (< p 0)
@@ -85,15 +84,15 @@
                                (integerp (nth (bound x (length l)) l))))
 
 (defthm bound-ok (implies (and (< 0 N)
-                               (natp N)
+                               (integerp N)
                                (integerp x))
-                          (and (natp (bound x N))
+                          (and (integerp (bound x N))
                                (< (bound x N) N))))
 
 (DEFTHM MEMBER-IF-BOUNDED
         (IMPLIES (AND (INTEGER-LISTP L)
                       (< 0 (LENGTH L))
-                      (NATP X)
+                      (INTEGERP X)
                       (< X (LENGTH L)))
                  (MEMBER (NTH X L) L)))
 
@@ -177,25 +176,74 @@
     (and (consp sa)
          (integerp (cdr sa)))))
 
-(defthm buf-declared-after-update-idx
+(defthm exist-after-put-ctx
   (implies (and (contextp ctx)
-                (symbolp dim0)
-                (symbolp fname)
-                (not (equal fname dim0))
-                (declared-int dim0 ctx)
-                (integerp dim0)
-                (declared-buf fname ctx))
-           (declared-buf fname (put-assoc dim0 idx ctx))))
+                (symbolp k)
+                (or (integerp v)
+                    (bufferp v))
+                )
+           (consp (assoc k
+                         (put-assoc k v ctx))))
+  )
 
-(defthm buf-declared-after-delete-idx
+(defthm equal-after-put-ctx
   (implies (and (contextp ctx)
-                (symbolp dim0)
-                (symbolp fname)
-                (not (equal fname dim0))
-                (declared-int dim0 ctx)
-                (integerp dim0)
-                (declared-buf fname ctx))
-           (declared-buf fname (delete-assoc dim0 ctx))))
+                (symbolp k)
+                (or (integerp v)
+                    (bufferp v))
+                )
+           (equal (cdr (assoc k (put-assoc k v ctx)))
+                  v)))
+
+(defthm exist-after-del-k2
+  (implies (and (contextp ctx)
+                (symbolp k1)
+                (symbolp k2)
+                (not (equal k1 k2))
+                (consp (assoc k1 ctx))
+                )
+           (consp (assoc k1
+                         (delete-assoc k2 ctx)))))
+
+(defthm unchanged-after-del-k2
+  (implies (and (contextp ctx)
+                (symbolp k1)
+                (symbolp k2)
+                (not (equal k1 k2))
+                (consp (assoc k1 ctx))
+                (equal (cdr (assoc k1 ctx))
+                       v)
+                )
+           (equal (cdr (assoc k1
+                              (delete-assoc k2 ctx)))
+                  v)))
+
+(defthm exist-after-put-k2
+  (implies (and (contextp ctx)
+                (symbolp k1)
+                (symbolp k2)
+                (not (equal k1 k2))
+                (consp (assoc k1 ctx))
+                (or (integerp v2)
+                    (bufferp v2))
+                )
+           (consp (assoc k1
+                         (put-assoc k2 v2 ctx)))))
+
+(defthm unchanged-after-put-k2
+  (implies (and (contextp ctx)
+                (symbolp k1)
+                (symbolp k2)
+                (not (equal k1 k2))
+                (consp (assoc k1 ctx))
+                (equal (cdr (assoc k1 ctx))
+                       v)
+                (or (integerp v2)
+                    (bufferp v2))
+                )
+           (equal (cdr (assoc k1
+                              (put-assoc k2 v2 ctx)))
+                  v)))
 
 (defthm buf-declared-after-put-buf
   (implies (and (contextp ctx)
@@ -209,15 +257,22 @@
                 (integerp n))
            (declared-int dim0 (put-assoc dim0 n ctx))))
 
-;;;
-(defthm equal-after-put-ctx
+(defthm buf-declared-after-update-idx
   (implies (and (contextp ctx)
-                (symbolp k)
-                (or (integerp v)
-                    (bufferp v))
-                )
-           (equal (assoc k (put-assoc k v ctx))
-                  v)))
+                (symbolp dim0)
+                (symbolp fname)
+                (not (equal fname dim0))
+                (integerp idx)
+                (declared-buf fname ctx))
+           (declared-buf fname (put-assoc dim0 idx ctx))))
+
+(defthm buf-declared-after-delete-idx
+  (implies (and (contextp ctx)
+                (symbolp dim0)
+                (symbolp fname)
+                (not (equal fname dim0))
+                (declared-buf fname ctx))
+           (declared-buf fname (delete-assoc dim0 ctx))))
 
 (defun exprp (e)
   (declare (xargs :guard t))
@@ -250,7 +305,7 @@
                       (exprp arg2)))
              (alloca (and (consp args)
                           (atom (cdr args))
-                          (natp arg1)
+                          (integerp arg1)
                           (< 0 arg1)))             
              (otherwise nil))
            ))
@@ -308,9 +363,8 @@
   (declare (xargs :guard t))
   (and (consp e)
        (consp (car e))
-       (symbolp (caar e))
-       (symbol-listp (cdar e))
-       (no-duplicatesp (cdar e))
+       (symbol-listp (car e))
+       (no-duplicatesp (car e))
        (consp (cdar e))
        (exprp (cdr e))
        (not-use-symbol (cdr e) (caar e))
@@ -338,14 +392,19 @@
        (atom (cddar e))
        ))
 
+(defthm halide-name-ok
+  (implies (halide-1dp e)
+           (not (equal (halide-funcname e)
+                       (halide-dim0 e)))))
+
 (defun simulate-1d-update (e ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (contextp ctx)
                               (declared-buf (halide-funcname e) ctx)
-                              (declared-int (car (halide-dims e)) ctx)
+                              (declared-int (halide-dim0 e) ctx)
                               )))
   (let* ((fname (halide-funcname e))
-         (dim0 (car (halide-dims e)))
+         (dim0 (halide-dim0 e))
          (buf (cdr (assoc fname ctx)))
          (idx (cdr (assoc dim0 ctx))))
     (if (and (bufferp buf)
@@ -369,18 +428,103 @@
   (implies (and (halide-1dp e)
                 (contextp ctx)
                 (declared-buf (halide-funcname e) ctx)
-                (declared-int (car (halide-dims e)) ctx))
+                )
            (declared-buf (halide-funcname e)
                          (simulate-1d-update e ctx)))
   :hints (("Goal"
            :do-not-induct t)))
 
+(DEFTHM BDAPSD-HELPER1
+        (IMPLIES (AND (HALIDE-1DP E)
+                      (CONTEXTP CTX)
+                      (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
+                      (INTEGERP BASE))
+                 (DECLARED-BUF (HALIDE-FUNCNAME E)
+                               (PUT-ASSOC (HALIDE-DIM0 E) BASE CTX)))
+        :INSTRUCTIONS
+        (:PROMOTE :S-PROP
+                  (:USE (:INSTANCE BUF-DECLARED-AFTER-UPDATE-IDX (CTX CTX)
+                                   (DIM0 (HALIDE-DIM0 E))
+                                   (FNAME (HALIDE-FUNCNAME E))
+                                   (IDX BASE)))
+                  (:DEMOTE 1)
+                  (:DIVE 1 2)
+                  :TOP :PROMOTE :PROMOTE (:DEMOTE 1)
+                  (:DIVE 1 2)
+                  :S :TOP :PROMOTE (:DEMOTE 5)
+                  :BASH))
+
+(DEFTHM
+ BDAPSD-HELPER2
+ (IMPLIES
+    (AND (HALIDE-1DP E)
+         (CONTEXTP CTX)
+         (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
+         (INTEGERP BASE))
+    (DECLARED-BUF (HALIDE-FUNCNAME E)
+                  (SIMULATE-1D-UPDATE E
+                                      (PUT-ASSOC (HALIDE-DIM0 E) BASE CTX))))
+ :INSTRUCTIONS
+ (:PROMOTE :S-PROP
+           (:CLAIM (DECLARED-BUF (HALIDE-FUNCNAME E)
+                                 (PUT-ASSOC-EQUAL (HALIDE-DIM0 E)
+                                                  BASE CTX)))
+           :PROVE))
+
+(DEFTHM
+ BUF-DECLARED-AFTER-PUT-SIM-DEL
+ (IMPLIES
+  (AND (HALIDE-1DP E)
+       (CONTEXTP CTX)
+       (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
+       (INTEGERP BASE))
+  (DECLARED-BUF
+   (HALIDE-FUNCNAME E)
+   (DELETE-ASSOC (HALIDE-DIM0 E)
+                 (SIMULATE-1D-UPDATE E
+                                     (PUT-ASSOC (HALIDE-DIM0 E) BASE CTX)))))
+ :INSTRUCTIONS
+ (:PROMOTE
+   :S-PROP
+   (:CLAIM (DECLARED-BUF (HALIDE-FUNCNAME E)
+                         (PUT-ASSOC-EQUAL (HALIDE-DIM0 E)
+                                          BASE CTX)))
+   (:CLAIM (DECLARED-BUF (HALIDE-FUNCNAME E)
+                         (SIMULATE-1D-UPDATE E
+                                             (PUT-ASSOC-EQUAL (HALIDE-DIM0 E)
+                                                              BASE CTX))))
+   (:CLAIM (NOT (EQUAL (HALIDE-FUNCNAME E)
+                       (HALIDE-DIM0 E))))
+   (:USE (:INSTANCE BUF-DECLARED-AFTER-DELETE-IDX
+                    (DIM0 (HALIDE-DIM0 E))
+                    (FNAME (HALIDE-FUNCNAME E))
+                    (CTX (SIMULATE-1D-UPDATE E
+                                             (PUT-ASSOC-EQUAL (HALIDE-DIM0 E)
+                                                              BASE CTX)))))
+   :PROMOTE (:DEMOTE 1)
+   :BASH))
+
+(defthm contextp-after-put-sim-del
+  (implies (and (contextp ctx)
+                (halide-1dp e)
+                (integerp base)
+                (declared-buf (halide-funcname e) ctx)
+                )
+           (contextp (delete-assoc
+                      (halide-dim0 e)
+                      (simulate-1d-update
+                       e
+                       (put-assoc (halide-dim0 e)
+                                  base
+                                  ctx))))))
+
+;; get stuck
 (defun simulate-1d-for (e base extent ctx)
-  (declare (xargs :guard (and (integerp base)
-                              (natp extent)
+  (declare (xargs :guard (and (halide-1dp e)
+                              (integerp base)
+                              (integerp extent)
                               (contextp ctx)
-                              (declared-buf (halide-funcname e) ctx)
-                              (halide-1dp e))
+                              (declared-buf (halide-funcname e) ctx))
                   :verify-guards nil
                   ))
   (if (zp extent)
@@ -392,6 +536,37 @@
            (ctx-1i (delete-assoc dim0
                                  (simulate-1d-update e ctx-i))))
       (simulate-1d-for e base-1i extent-1i ctx-1i))))
+
+(verify-guards simulate-1d-for
+              :hints (("Goal" :do-not-induct t)))
+
+(DEFTHM
+ CONTEXTP-SIMULATE-1D-FOR
+ (IMPLIES (AND (INTEGERP BASE)
+               (INTEGERP EXTENT)
+               (CONTEXTP CTX)
+               (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
+               (HALIDE-1DP E))
+          (CONTEXTP (SIMULATE-1D-FOR E BASE EXTENT CTX)))
+ :INSTRUCTIONS
+ (:INDUCT
+  :PROMOTE (:DEMOTE 2)
+  (:DIVE 2 1)
+  :EXPAND :S-PROP :TOP
+  (:CLAIM
+    (CONTEXTP (DELETE-ASSOC-EQUAL
+                   (CAR (HALIDE-DIMS E))
+                   (SIMULATE-1D-UPDATE E
+                                       (PUT-ASSOC-EQUAL (CAR (HALIDE-DIMS E))
+                                                        BASE CTX)))))
+  (:USE (:INSTANCE BUF-DECLARED-AFTER-PUT-SIM-DEL (E E)
+                   (CTX CTX)
+                   (BASE BASE)))
+  :PROMOTE (:DEMOTE 1)
+  (:DIVE 1)
+  (:DIVE 2)
+  :S-PROP :TOP
+  :BASH :BASH))
 
 (defun simulate-1d (e base size ctx)
   (declare (xargs :guard (and (halide-1dp e)
