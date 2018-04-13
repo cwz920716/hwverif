@@ -44,90 +44,81 @@
 ;; a buffer is an integer list which is non-empty
 (defun bufferp (buf)
   (declare (xargs :guard t))
-  (and (consp buf)
-       (integer-listp buf)))
+  (integer-listp buf))
+
+(defthm buffer-is-intlist
+  (equal (bufferp x)
+         (integer-listp x)))
 
 (local (include-book "std/lists/repeat" :dir :system))
 
 (defun induct-rib (n)
-  (if (or (<= n 1)
-          (not (integerp n)))
+  (if (zp n)
       t
     (induct-rib (- n 1))))
 
 (DEFTHM REPEAT-IS-BUF
-        (IMPLIES (AND (INTEGERP N) (>= N 1))
+        (IMPLIES (NATP N)
                  (BUFFERP (REPEAT N 0)))
         :INSTRUCTIONS ((:INDUCT (INDUCT-RIB N))
-                       :BASH (:DV 1)
-                       (:DIVE 1)
-                       :UP
-                       :EXPAND :S
-                       :TOP :EXPAND
-                       :S :BASH))
-
-;; bound will make any input integer p to be within interval [0, N)
-(defun bound (p N)
-  (declare (xargs :guard (and (integerp p)
-                              (integerp N))))
-  (if (< N 0)
-      -1
-    (if (< p 0)
-        0
-      (if (< p N)
-          p
-        (- N 1)))))
-
-(defthm bound-type-ok (implies (and (integer-listp l)
-                                    (> (length l) 0)
-                                    (integerp x))
-                               (integerp (nth (bound x (length l)) l))))
-
-(defthm bound-ok (implies (and (< 0 N)
-                               (integerp N)
-                               (integerp x))
-                          (and (integerp (bound x N))
-                               (< (bound x N) N))))
-
-(DEFTHM MEMBER-IF-BOUNDED
-        (IMPLIES (AND (INTEGER-LISTP L)
-                      (< 0 (LENGTH L))
-                      (INTEGERP X)
-                      (< X (LENGTH L)))
-                 (MEMBER (NTH X L) L)))
-
-(defthm bound-mem-ok (implies (and (integer-listp l)
-                                   (> (length l) 0)
-                                   (integerp x))
-                              (member (nth (bound x (length l)) l) l)))
+                       :PROMOTE (:DIVE 1)
+                       :X
+                       :TOP (:CLAIM (NATP (1- N)))
+                       :BASH :BASH))
+(DEFTHM REPEAT-POSINT-BUF
+        (IMPLIES (AND (INTEGERP N) (< 0 N))
+                 (BUFFERP (REPEAT N 0)))
+        :INSTRUCTIONS (:BASH (:CLAIM (NATP N))
+                             (:USE REPEAT-IS-BUF)
+                             (:DEMOTE 1)
+                             (:DIVE 1 2)
+                             :EXPAND
+                             :TOP :PROMOTE
+                             :PROMOTE :BASH))
 
 (defun [] (buf x)
   (declare (xargs :guard (and (bufferp buf)
                               (integerp x))))
-  (nth (bound x (length buf)) buf))
+  (ifix (nth (nfix x) buf)))
+
+(DEFTHM BUFFER-ACCESS-OK
+        (IMPLIES (AND (BUFFERP BUF) (INTEGERP N))
+                 (INTEGERP ([] BUF N)))
+        :INSTRUCTIONS ((:DIVE 1 1)
+                       :EXPAND :TOP (:DIVE 2 1)
+                       :EXPAND
+                       :TOP :PROVE))
+
+(defun assign2 (buf x val)
+  (declare (xargs :guard (and (integer-listp buf)
+                              (natp x)
+                              (integerp val))))
+  (if (endp buf)
+      nil
+    (if (zp x)
+        (cons val (cdr buf))
+      (cons (car buf) (assign2 (cdr buf) (nfix (1- x)) val))
+    )))
+
+(defthm assign-buf-ok
+    (implies (and (bufferp buf)
+                  (natp n1)
+                  (integerp i2))
+             (bufferp (assign2 buf n1 i2))))
 
 (defun []= (buf x val)
-  (declare (xargs :guard (and (bufferp buf)
+  (declare (xargs :guard (and (integer-listp buf)
                               (integerp x)
                               (integerp val))))
-  (if (and (<= 0 x)
-           (< x (length buf)))
-      (update-nth x val buf)
+  (if (natp x)
+      (assign2 buf x val)
     buf))
 
 (defthm update-buf-ok
     (implies (and (bufferp buf)
-                  (integerp n1)
-                  (integerp n2))
-             (bufferp ([]= buf n1 n2))))
-
-(defthm update-nth-buf-ok
-    (implies (and (bufferp buf)
-                  (integerp n1)
-                  (integerp n2)
-                  (<= 0 n1)
-                  (< n1 (length buf)))
-             (bufferp (update-nth n1 n2 buf))))
+                  (integerp i1)
+                  (integerp i2))
+             (bufferp ([]= buf i1 i2))))
 
 ;; A context is a list which only supports (symbol.integer) or (symbol.buffer)
 (defun contextp (x)
@@ -408,6 +399,22 @@
         (alloca (repeat (ifix (expr-eval (car args) c)) 0))
         (otherwise 0)))))
 
+(DEFTHM
+     EXPR-TYPE-HELPER1
+     (IMPLIES (AND (CONSP E)
+                   (CONSP (CDR E))
+                   (INTEGERP (CADR E))
+                   (< 0 (CADR E)))
+              (INTEGER-LISTP (REPEAT (CADR E) 0)))
+     :INSTRUCTIONS (:BASH (:USE (:INSTANCE REPEAT-POSINT-BUF (N (CADR E))))
+                          :BASH))
+
+(defthm expr-type-ok
+  (implies (and (exprp e)
+                (contextp ctx))
+           (or (bufferp (expr-eval e ctx))
+               (integerp (expr-eval e ctx)))))
+
 ;; A halide program has three components: A symbolic name, a symblic list for
 ;; dimentional vars, and a expression for pure definition
 (defun halidep (e)
@@ -451,15 +458,20 @@
 (defun simulate-1d-update (e ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (contextp ctx)
-                              (declared-buf (halide-funcname e) ctx)
-                              (declared-int (halide-dim0 e) ctx)
+                              ;(declared-buf (halide-funcname e) ctx)
+                              ;(declared-int (halide-dim0 e) ctx)
                               )
-                  :verify-guards nil))
+                  ;:verify-guards nil
+                  ))
   (let* ((fname (halide-funcname e))
          (dim0 (halide-dim0 e))
-         (buf (cdr (assoc fname ctx)))
-         (idx (cdr (assoc dim0 ctx))))
-    (if (and (bufferp buf)
+         (buf-pair (assoc fname ctx))
+         (idx-pair (assoc dim0 ctx))
+         (buf (cdr buf-pair))
+         (idx (cdr idx-pair)))
+    (if (and (consp buf-pair)
+             (consp idx-pair)
+             (bufferp buf)
              (integerp idx))
         (put-ctx fname
                    ([]= buf
@@ -467,10 +479,6 @@
                         (ifix (expr-eval (halide-expr e) ctx)))
                    ctx)
       ctx)))
-
-;; get stuck
-(verify-guards simulate-1d-update
-              :hints (("Goal" :do-not-induct t)))
 
 (defthm contextp-after-sim-1d-update
   (implies (and (halide-1dp e)
