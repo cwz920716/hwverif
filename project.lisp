@@ -22,34 +22,6 @@
 ;; Expr = <dimentional_identifier>
 ;; Expr = <const_number>
 
-;; For milestone 0.1, we build an evaluator for halide expression.
-
-;(include-book "std/lists/top" :dir :system)
-
-;(include-book "std/strings/top" :dir :system)
-
-;(include-book "arithmetic/top-with-meta" :dir :system)
-
-;(defun id-from-nat (s idx)
-;  (declare (xargs :guard (and
-;                          (symbolp s)
-;                          (integerp idx))))
-;  (intern$ (STRING-APPEND
-;            (STRING-APPEND
-;             (SYMBOL-NAME S)
-;             "_")
-;            (STR::NATSTR (NFIX IDX)))
-;           "ACL2"))
-
-;; a buffer is an integer list which is non-empty
-(defun bufferp (buf)
-  (declare (xargs :guard t))
-  (integer-listp buf))
-
-(defthm buffer-is-intlist
-  (equal (bufferp x)
-         (integer-listp x)))
-
 (local (include-book "std/lists/repeat" :dir :system))
 
 (defun induct-rib (n)
@@ -59,15 +31,16 @@
 
 (DEFTHM REPEAT-IS-BUF
         (IMPLIES (NATP N)
-                 (BUFFERP (REPEAT N 0)))
+                 (INTEGER-LISTP (REPEAT N 0)))
         :INSTRUCTIONS ((:INDUCT (INDUCT-RIB N))
                        :PROMOTE (:DIVE 1)
                        :X
                        :TOP (:CLAIM (NATP (1- N)))
                        :BASH :BASH))
+
 (DEFTHM REPEAT-POSINT-BUF
         (IMPLIES (AND (INTEGERP N) (< 0 N))
-                 (BUFFERP (REPEAT N 0)))
+                 (INTEGER-LISTP (REPEAT N 0)))
         :INSTRUCTIONS (:BASH (:CLAIM (NATP N))
                              (:USE REPEAT-IS-BUF)
                              (:DEMOTE 1)
@@ -77,12 +50,12 @@
                              :PROMOTE :BASH))
 
 (defun [] (buf x)
-  (declare (xargs :guard (and (bufferp buf)
+  (declare (xargs :guard (and (integer-listp buf)
                               (integerp x))))
   (ifix (nth (nfix x) buf)))
 
 (DEFTHM BUFFER-ACCESS-OK
-        (IMPLIES (AND (BUFFERP BUF) (INTEGERP N))
+        (IMPLIES (AND (INTEGER-LISTP BUF) (INTEGERP N))
                  (INTEGERP ([] BUF N)))
         :INSTRUCTIONS ((:DIVE 1 1)
                        :EXPAND :TOP (:DIVE 2 1)
@@ -101,10 +74,10 @@
     )))
 
 (defthm assign-buf-ok
-    (implies (and (bufferp buf)
+    (implies (and (integer-listp buf)
                   (natp n1)
                   (integerp i2))
-             (bufferp (assign2 buf n1 i2))))
+             (integer-listp (assign2 buf n1 i2))))
 
 (defun []= (buf x val)
   (declare (xargs :guard (and (integer-listp buf)
@@ -115,10 +88,10 @@
     buf))
 
 (defthm update-buf-ok
-    (implies (and (bufferp buf)
+    (implies (and (integer-listp buf)
                   (integerp i1)
                   (integerp i2))
-             (bufferp ([]= buf i1 i2))))
+             (integer-listp ([]= buf i1 i2))))
 
 ;; A context is a list which only supports (symbol.integer) or (symbol.buffer)
 (defun contextp (x)
@@ -129,7 +102,7 @@
       (and (consp pair)
            (symbolp (car pair))
            (or (integerp (cdr pair))
-               (bufferp (cdr pair)))
+               (integer-listp (cdr pair)))
            (contextp (cdr x))))))
 
 (defthm context-is-alist
@@ -139,7 +112,7 @@
 (defun put-ctx (k v ctx)
   (declare (xargs :guard (and (symbolp k)
                               (or (integerp v)
-                                  (bufferp v))
+                                  (integer-listp v))
                               (contextp ctx))))
   (if (endp ctx)
       (list (cons k v))
@@ -151,7 +124,7 @@
 (defthm put-assoc-ctx-ok
   (implies (and (symbolp k)
                 (or (integerp v)
-                    (bufferp v))
+                    (integer-listp v))
                 (contextp ctx))
            (equal (put-assoc k v ctx)
                   (put-ctx k v ctx))))
@@ -173,7 +146,7 @@
 
 (defthm context-put-buf-ok
   (implies (and (symbolp name)
-                (bufferp buf)
+                (integer-listp buf)
                 (contextp ctx))
            (contextp (put-ctx name buf ctx))))
 
@@ -193,14 +166,14 @@
                               (contextp ctx))))
   (let ((sa (assoc sym ctx)))
     (and (consp sa)
-         (bufferp (cdr sa)))))
+         (integer-listp (cdr sa)))))
 
 (defthm declared-buf-ok
   (implies (and (symbolp s)
                 (contextp ctx)
                 (declared-buf s ctx))
            (and (consp (assoc s ctx))
-                (bufferp (cdr (assoc s ctx))))
+                (integer-listp (cdr (assoc s ctx))))
            ))
 
 (defun declared-int (sym ctx)
@@ -222,7 +195,7 @@
   (implies (and (contextp ctx)
                 (symbolp k)
                 (or (integerp v)
-                    (bufferp v))
+                    (integer-listp v))
                 )
            (consp (assoc k
                          (put-ctx k v ctx))))
@@ -232,7 +205,7 @@
   (implies (and (contextp ctx)
                 (symbolp k)
                 (or (integerp v)
-                    (bufferp v))
+                    (integer-listp v))
                 )
            (equal (cdr (assoc k (put-ctx k v ctx)))
                   v)))
@@ -267,7 +240,7 @@
                 (not (equal k1 k2))
                 (consp (assoc k1 ctx))
                 (or (integerp v2)
-                    (bufferp v2))
+                    (integer-listp v2))
                 )
            (consp (assoc k1
                          (put-ctx k2 v2 ctx)))))
@@ -281,7 +254,7 @@
                 (equal (cdr (assoc k1 ctx))
                        v)
                 (or (integerp v2)
-                    (bufferp v2))
+                    (integer-listp v2))
                 )
            (equal (cdr (assoc k1
                               (put-ctx k2 v2 ctx)))
@@ -290,7 +263,7 @@
 (defthm buf-declared-after-put-buf
   (implies (and (contextp ctx)
                 (symbolp fname)
-                (bufferp buf))
+                (integer-listp buf))
            (declared-buf fname (put-ctx fname buf ctx))))
 
 (defthm int-declared-after-put-int
@@ -380,7 +353,7 @@
   (if (atom e)
       (if (symbolp e)
           (let ((r (cdr (assoc e c))))
-            (if (bufferp r)
+            (if (integer-listp r)
                 r
               (ifix r)))
         (ifix e))
@@ -393,7 +366,7 @@
         (* (* (ifix (expr-eval (car args) c))
               (ifix (expr-eval (cadr args) c))))
         ([] (let ((buf (expr-eval (car args) c)))
-              (if (bufferp buf)
+              (if (integer-listp buf)
                   ([] buf (ifix (expr-eval (cadr args) c)))
                 (ifix buf))))
         (alloca (repeat (ifix (expr-eval (car args) c)) 0))
@@ -412,7 +385,7 @@
 (defthm expr-type-ok
   (implies (and (exprp e)
                 (contextp ctx))
-           (or (bufferp (expr-eval e ctx))
+           (or (integer-listp (expr-eval e ctx))
                (integerp (expr-eval e ctx)))))
 
 ;; A halide program has three components: A symbolic name, a symblic list for
@@ -471,7 +444,7 @@
          (idx (cdr idx-pair)))
     (if (and (consp buf-pair)
              (consp idx-pair)
-             (bufferp buf)
+             (integer-listp buf)
              (integerp idx))
         (put-ctx fname
                    ([]= buf
@@ -819,7 +792,7 @@
         ([]= (let* ((buf-assoc (assoc s1 ctx))
                     (buf (cdr buf-assoc)))
                (if (and (consp buf-assoc)
-                        (bufferp buf))
+                        (integer-listp buf))
                    (put-ctx s1
                               ([]= buf
                                    (ifix (expr-eval s2 ctx))

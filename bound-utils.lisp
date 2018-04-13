@@ -1,5 +1,22 @@
 
 
+;(include-book "std/lists/top" :dir :system)
+
+;(include-book "std/strings/top" :dir :system)
+
+;(include-book "arithmetic/top-with-meta" :dir :system)
+
+;(defun id-from-nat (s idx)
+;  (declare (xargs :guard (and
+;                          (symbolp s)
+;                          (integerp idx))))
+;  (intern$ (STRING-APPEND
+;            (STRING-APPEND
+;             (SYMBOL-NAME S)
+;             "_")
+;            (STR::NATSTR (NFIX IDX)))
+;           "ACL2"))
+
 ;; bound will make any input integer p to be within interval [0, N)
 (defun bound (p N)
   (declare (xargs :guard (and (integerp p)
