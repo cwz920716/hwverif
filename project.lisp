@@ -40,14 +40,7 @@
 
 (DEFTHM REPEAT-POSINT-BUF
         (IMPLIES (AND (INTEGERP N) (< 0 N))
-                 (INTEGER-LISTP (REPEAT N 0)))
-        :INSTRUCTIONS (:BASH (:CLAIM (NATP N))
-                             (:USE REPEAT-IS-BUF)
-                             (:DEMOTE 1)
-                             (:DIVE 1 2)
-                             :EXPAND
-                             :TOP :PROMOTE
-                             :PROMOTE :BASH))
+                 (INTEGER-LISTP (REPEAT N 0))))
 
 (defun [] (buf x)
   (declare (xargs :guard (and (integer-listp buf)
@@ -372,16 +365,6 @@
         (alloca (repeat (ifix (expr-eval (car args) c)) 0))
         (otherwise 0)))))
 
-(DEFTHM
-     EXPR-TYPE-HELPER1
-     (IMPLIES (AND (CONSP E)
-                   (CONSP (CDR E))
-                   (INTEGERP (CADR E))
-                   (< 0 (CADR E)))
-              (INTEGER-LISTP (REPEAT (CADR E) 0)))
-     :INSTRUCTIONS (:BASH (:USE (:INSTANCE REPEAT-POSINT-BUF (N (CADR E))))
-                          :BASH))
-
 (defthm expr-type-ok
   (implies (and (exprp e)
                 (contextp ctx))
@@ -453,109 +436,6 @@
                    ctx)
       ctx)))
 
-(defthm contextp-after-sim-1d-update
-  (implies (and (halide-1dp e)
-                (contextp ctx)
-                )
-           (contextp (simulate-1d-update e ctx)))
-  :hints (("Goal"
-           :do-not-induct t)))
-
-(defthm buf-declared-after-sim-1d-update
-  (implies (and (halide-1dp e)
-                (contextp ctx)
-                (declared-buf (halide-funcname e) ctx)
-                )
-           (declared-buf (halide-funcname e)
-                         (simulate-1d-update e ctx)))
-  :hints (("Goal"
-           :do-not-induct t)))
-
-(DEFTHM BDAPSD-HELPER1
-        (IMPLIES (AND (HALIDE-1DP E)
-                      (CONTEXTP CTX)
-                      (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
-                      (INTEGERP BASE))
-                 (DECLARED-BUF (HALIDE-FUNCNAME E)
-                               (PUT-CTX (HALIDE-DIM0 E) BASE CTX)))
-        :INSTRUCTIONS
-        (:PROMOTE :S-PROP
-                  (:USE (:INSTANCE BUF-DECLARED-AFTER-UPDATE-IDX (CTX CTX)
-                                   (DIM0 (HALIDE-DIM0 E))
-                                   (FNAME (HALIDE-FUNCNAME E))
-                                   (IDX BASE)))
-                  (:DEMOTE 1)
-                  (:DIVE 1 2)
-                  :TOP :PROMOTE :PROMOTE (:DEMOTE 1)
-                  (:DIVE 1 2)
-                  :S :TOP :PROMOTE (:DEMOTE 5)
-                  :BASH))
-
-(DEFTHM
- BDAPSD-HELPER2
- (IMPLIES
-    (AND (HALIDE-1DP E)
-         (CONTEXTP CTX)
-         (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
-         (INTEGERP BASE))
-    (DECLARED-BUF (HALIDE-FUNCNAME E)
-                  (SIMULATE-1D-UPDATE E
-                                      (PUT-ASSOC (HALIDE-DIM0 E) BASE CTX))))
- :INSTRUCTIONS
- (:PROMOTE :S-PROP
-           (:CLAIM (DECLARED-BUF (HALIDE-FUNCNAME E)
-                                 (PUT-ASSOC-EQUAL (HALIDE-DIM0 E)
-                                                  BASE CTX)))
-           :PROVE))
-
-(DEFTHM
- BUF-DECLARED-AFTER-PUT-SIM-DEL
- (IMPLIES
-  (AND (HALIDE-1DP E)
-       (CONTEXTP CTX)
-       (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
-       (INTEGERP BASE))
-  (DECLARED-BUF
-   (HALIDE-FUNCNAME E)
-   (DELETE-ASSOC (HALIDE-DIM0 E)
-                 (SIMULATE-1D-UPDATE E
-                                     (PUT-ASSOC (HALIDE-DIM0 E) BASE CTX)))))
- :INSTRUCTIONS
- (:PROMOTE
-   :S-PROP
-   (:CLAIM (DECLARED-BUF (HALIDE-FUNCNAME E)
-                         (PUT-ASSOC-EQUAL (HALIDE-DIM0 E)
-                                          BASE CTX)))
-   (:CLAIM (DECLARED-BUF (HALIDE-FUNCNAME E)
-                         (SIMULATE-1D-UPDATE E
-                                             (PUT-ASSOC-EQUAL (HALIDE-DIM0 E)
-                                                              BASE CTX))))
-   (:CLAIM (NOT (EQUAL (HALIDE-FUNCNAME E)
-                       (HALIDE-DIM0 E))))
-   (:USE (:INSTANCE BUF-DECLARED-AFTER-DELETE-IDX
-                    (DIM0 (HALIDE-DIM0 E))
-                    (FNAME (HALIDE-FUNCNAME E))
-                    (CTX (SIMULATE-1D-UPDATE E
-                                             (PUT-ASSOC-EQUAL (HALIDE-DIM0 E)
-                                                              BASE CTX)))))
-   :PROMOTE (:DEMOTE 1)
-   :BASH))
-
-(defthm contextp-after-put-sim-del
-  (implies (and (contextp ctx)
-                (halide-1dp e)
-                (integerp base)
-                (declared-buf (halide-funcname e) ctx)
-                )
-           (contextp (delete-ctx
-                      (halide-dim0 e)
-                      (simulate-1d-update
-                       e
-                       (put-ctx (halide-dim0 e)
-                                  base
-                                  ctx))))))
-
-;; get stuck
 (defun simulate-1d-for (e base extent ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (integerp base)
@@ -574,94 +454,13 @@
                                  (simulate-1d-update e ctx-i))))
       (simulate-1d-for e base-1i extent-1i ctx-1i))))
 
-(defthm test
- (IMPLIES
-  (AND (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
-       (CONTEXTP CTX)
-       (NATP EXTENT)
-       (INTEGERP BASE)
-       (HALIDE-1DP E)
-       (NOT (ZP EXTENT)))
-  (LET
-   ((DIM0 (CAR (HALIDE-DIMS E))))
-   (AND
-    (LET ((NAME DIM0) (VAL BASE) (ALIST CTX))
-         (AND (OR (NOT (EQLABLEP NAME))
-                  (ALISTP ALIST))
-              (OR (EQLABLEP NAME)
-                  (EQLABLE-ALISTP ALIST))
-              (EQUAL (PUT-ASSOC-EQUAL NAME VAL ALIST)
-                     (PUT-ASSOC-EQL-EXEC NAME VAL ALIST))))
-    (LET
-     ((CTX-I (PUT-ASSOC-EQUAL DIM0 BASE CTX)))
-     (AND
-      (ACL2-NUMBERP BASE)
-      (LET
-       ((BASE-1I (+ BASE 1)))
-       (AND
-        (ACL2-NUMBERP EXTENT)
-        (LET
-         ((EXTENT-1I (+ -1 EXTENT)))
-         (AND
-          (HALIDE-1DP E)
-          (DECLARED-BUF (HALIDE-FUNCNAME E) CTX-I)
-          (CONTEXTP CTX-I)
-          (DECLARED-INT (HALIDE-DIM0 E) CTX-I)
-          (LET ((KEY DIM0)
-                (ALIST (SIMULATE-1D-UPDATE E CTX-I)))
-               (AND (OR (NOT (EQLABLEP KEY)) (ALISTP ALIST))
-                    (OR (EQLABLEP KEY)
-                        (EQLABLE-ALISTP ALIST))
-                    (EQUAL (DELETE-ASSOC-EQUAL KEY ALIST)
-                           (DELETE-ASSOC-EQL-EXEC KEY ALIST))))
-          (LET
-            ((CTX-1I (DELETE-ASSOC-EQUAL DIM0 (SIMULATE-1D-UPDATE E CTX-I))))
-            (AND (HALIDE-1DP E)
-                 (DECLARED-BUF (HALIDE-FUNCNAME E)
-                               CTX-1I)
-                 (NATP EXTENT-1I)
-                 (INTEGERP BASE-1I)
-                 (CONTEXTP CTX-1I))))))))))))
-  )
-
-(verify-guards simulate-1d-for
-              :hints (("Goal" :do-not-induct t)))
-
-(DEFTHM
- CONTEXTP-SIMULATE-1D-FOR
- (IMPLIES (AND (INTEGERP BASE)
-               (INTEGERP EXTENT)
-               (CONTEXTP CTX)
-               (DECLARED-BUF (HALIDE-FUNCNAME E) CTX)
-               (HALIDE-1DP E))
-          (CONTEXTP (SIMULATE-1D-FOR E BASE EXTENT CTX)))
- :INSTRUCTIONS
- (:INDUCT
-  :PROMOTE (:DEMOTE 2)
-  (:DIVE 2 1)
-  :EXPAND :S-PROP :TOP
-  (:CLAIM
-    (CONTEXTP (DELETE-ASSOC-EQUAL
-                   (CAR (HALIDE-DIMS E))
-                   (SIMULATE-1D-UPDATE E
-                                       (PUT-ASSOC-EQUAL (CAR (HALIDE-DIMS E))
-                                                        BASE CTX)))))
-  (:USE (:INSTANCE BUF-DECLARED-AFTER-PUT-SIM-DEL (E E)
-                   (CTX CTX)
-                   (BASE BASE)))
-  :PROMOTE (:DEMOTE 1)
-  (:DIVE 1)
-  (:DIVE 2)
-  :S-PROP :TOP
-  :BASH :BASH))
-
 (defun simulate-1d (e base size ctx)
   (declare (xargs :guard (and (halide-1dp e)
                               (natp size)
                               (natp base)
                               (< 0 size)
                               (contextp ctx))
-                  :verify-guards nil))
+                  :verify-guards t))
   (let* ((ctx-init (put-ctx (halide-funcname e)
                               (repeat size 0)
                               ctx)))
@@ -779,7 +578,7 @@
                  ctx
                (let* ((ctx-i (put-ctx s1 s2 ctx))
                       (base-1i (+ s2 1))
-                      (extent-1i (nfix (1- s3)))
+                      (extent-1i (1- s3))
                       (loop-i1 (cons com
                                      (cons s1
                                            (cons base-1i
@@ -841,19 +640,70 @@
                                         'x)
                                   0 10 nil)))
 
-(verify (implies
-         (and (exprp expr)
-              (natp n)
-              (natp b)
-              (< 0 n)
-              (contextp ctx)
-              ;;(not-use-symbol expr 'f)
-              )
-         (equal (exec-stmt (list 'begin
-                                 (list 'malloc 'f n)
-                                 (list 'for 'i b n
-                                       (list '[]= 'f 'i expr)))
-                           ctx)
-                (simulate-1d (cons '(f i)
-                                   expr)
-                             b n ctx))))
+(DEFTHM
+ EXEC-FOR-EQUAL-SIM-FOR
+ (IMPLIES (AND (NATP N)
+               (NATP B)
+               (SYMBOLP F)
+               (SYMBOLP I)
+               (CONTEXTP CTX)
+               (DECLARED-BUF F CTX)
+               (NOT (EQUAL F I))
+               (EXPRP EXPR)
+               (NOT-USE-SYMBOL EXPR F))
+          (EQUAL (EXEC-STMT (LIST 'FOR I B N (LIST '[]= F I EXPR))
+                            CTX)
+                 (SIMULATE-1D-FOR (CONS (LIST F I) EXPR)
+                                  B N CTX)))
+ :INSTRUCTIONS
+ (:INDUCT
+  (:DEMOTE 2)
+  (:DIVE 1)
+  (:DIVE 2)
+  (:DIVE 1)
+  (:DIVE 1)
+  :S :UP :UP :UP (:DIVE 2 2)
+  (:DIVE 3)
+  :S :UP (:DIVE 4 1)
+  :S :UP :UP :UP (:DIVE 1 2)
+  :S :UP :UP (:DIVE 2 4)
+  :S :TOP :PROMOTE :PROMOTE (:DIVE 1)
+  :X :TOP (:DIVE 2)
+  :EXPAND :S-PROP :TOP
+  (:CLAIM (HALIDE-1DP (CONS (LIST F I) EXPR)))
+  (:CLAIM
+   (CONTEXTP
+    (DELETE-CTX
+      (CAR (HALIDE-DIMS (CONS (LIST F I) EXPR)))
+      (SIMULATE-1D-UPDATE (CONS (LIST F I) EXPR)
+                          (PUT-CTX (CAR (HALIDE-DIMS (CONS (LIST F I) EXPR)))
+                                   B CTX)))))
+  (:CLAIM
+   (DECLARED-BUF
+    F
+    (DELETE-CTX
+      (CAR (HALIDE-DIMS (CONS (LIST F I) EXPR)))
+      (SIMULATE-1D-UPDATE (CONS (LIST F I) EXPR)
+                          (PUT-CTX (CAR (HALIDE-DIMS (CONS (LIST F I) EXPR)))
+                                   B CTX)))))
+  :BASH :BASH))
+
+(defthm exec-stmt-equal-sim
+  (implies
+   (and (exprp expr)
+        (natp n)
+        (natp b)
+        (contextp ctx)
+        (symbolp f)
+        (symbolp i)
+        (not (equal f i))
+        (not-use-symbol expr f)
+        )
+   (equal (exec-stmt (list 'begin
+                           (list 'malloc f n)
+                           (list 'for i b n
+                                 (list '[]= f i expr)))
+                     ctx)
+          (simulate-1d (cons (list f i)
+                             expr)
+                       b n ctx))))
