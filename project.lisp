@@ -406,10 +406,19 @@
        (atom (cddar e))
        ))
 
+(defthm halide-1d-is-halide
+    (implies (halide-1dp e)
+             (halidep e)))
+
 (defthm halide-name-ok
   (implies (halide-1dp e)
            (not (equal (halide-funcname e)
                        (halide-dim0 e)))))
+
+(defthm halide-expr-ok
+  (implies (halide-1dp e)
+           (not-use-symbol (halide-expr e)
+                           (halide-funcname e))))
 
 (defun simulate-1d-update (e ctx)
   (declare (xargs :guard (and (halide-1dp e)
@@ -707,3 +716,32 @@
           (simulate-1d (cons (list f i)
                              expr)
                        b n ctx))))
+
+;;Now write and verify the compiler
+(defun compile-halide (e n)
+  (declare (xargs :guard (and (halide-1dp e)
+                              (natp n)
+                              (< 0 n))))
+  (let* ((f (halide-funcname e))
+         (id (halide-dim0 e))
+         (expr (halide-expr e)))
+    (list 'begin
+          (list 'malloc f n)
+          (list 'for id 0 n
+                (list '[]= f id expr)))
+    ))
+
+(defthm compiler-type-ok
+  (implies (and (halide-1dp e)
+                (natp n)
+                (< 0 n))
+           (stmtp (compile-halide e n))))
+
+(defthm compiler-ok
+  (implies (and (halide-1dp e)
+                (natp n)
+                (< 0 n)
+                (contextp ctx))
+           (equal (exec-stmt (compile-halide e n)
+                             ctx)
+                  (simulate-1d e 0 n ctx))))
