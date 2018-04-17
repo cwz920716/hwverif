@@ -785,3 +785,105 @@
                 (contextp a))
            (equal (expr-eval (constant-fold e) a)
                   (expr-eval e a))))
+
+;; a super compiler can cover more transformations than a basic compiler
+(defun super-compiler (e)
+  (declare (xargs :guard (halide-1dp e)))
+  (cons (car e)
+        (constant-fold (cdr e))))
+
+(defthm constant-fold-sim-update-ok
+  (implies (and (halide-1dp e)
+                (contextp ctx)
+                )
+           (equal (simulate-1d-update (super-compiler e) ctx)
+                  (simulate-1d-update e
+                                      ctx))))
+
+(defthm constant-fold-keep-halide-names
+  (implies (halide-1dp e)
+           (and (equal (halide-funcname (super-compiler e))
+                       (halide-funcname e))
+                (equal (halide-dims (super-compiler e))
+                       (halide-dims e)))))
+
+;; get stuck again
+(DEFTHM
+ CONSTANT-FOLD-SIM-FOR-OK
+ (IMPLIES (AND (NATP B)
+               (NATP N)
+               (< 0 N)
+               (HALIDE-1DP E)
+               (CONTEXTP CTX)
+               (DECLARED-BUF (HALIDE-FUNCNAME E) CTX))
+          (EQUAL (SIMULATE-1D-FOR E B N CTX)
+                 (SIMULATE-1D-FOR (SUPER-COMPILER E)
+                                  B N CTX)))
+ :INSTRUCTIONS
+ (:PROMOTE
+  :INDUCT :PROMOTE (:DIVE 1)
+  :EXPAND :S-PROP :TOP (:DIVE 2)
+  :EXPAND :S-PROP :TOP
+  (:CLAIM
+     (CONTEXTP (DELETE-CTX (CAR (HALIDE-DIMS E))
+                           (SIMULATE-1D-UPDATE E
+                                               (PUT-CTX (CAR (HALIDE-DIMS E))
+                                                        B CTX)))))
+  (:CLAIM (DECLARED-BUF
+               (HALIDE-FUNCNAME E)
+               (DELETE-CTX (CAR (HALIDE-DIMS E))
+                           (SIMULATE-1D-UPDATE E
+                                               (PUT-CTX (CAR (HALIDE-DIMS E))
+                                                        B CTX)))))
+  (:DIVE 2 4 2)
+  (:REWRITE CONSTANT-FOLD-SIM-UPDATE-OK)
+  :TOP (:DIVE 2 4 1)
+  :TOP (:DIVE 2 4 1)
+  (:DIVE 1)
+  (:REWRITE CONSTANT-FOLD-KEEP-HALIDE-NAMES)
+  :TOP (:DIVE 2 4 2 2 1 1)
+  (:REWRITE CONSTANT-FOLD-KEEP-HALIDE-NAMES)
+  :TOP (:DEMOTE 2)
+  :BASH
+  :PROVE :PROVE))
+
+(defthm constant-fold-sim-ok
+  (implies (and (halide-1dp e)
+                (contextp ctx)
+                (natp b)
+                (natp n)
+                (< 0 n))
+           (equal (simulate-1d (super-compiler e) b n ctx)
+                  (simulate-1d e b n ctx))))
+
+(defthm constant-fold-not-use-new-symbols
+  (implies (and (exprp e)
+                (symbolp s)
+                (not-use-symbol e s))
+           (not-use-symbol (constant-fold e)
+                           s)))
+
+(defthm super-compiler-type-ok
+  (implies (halide-1dp e)
+           (halide-1dp (super-compiler e))))
+
+;; get stuck again
+
+(DEFTHM SUPER-COMPILER-OK
+        (IMPLIES (AND (HALIDE-1DP E)
+                      (NATP N)
+                      (< 0 N)
+                      (CONTEXTP CTX))
+                 (EQUAL (EXEC-STMT (COMPILE-HALIDE (SUPER-COMPILER E) N)
+                                   CTX)
+                        (EXEC-STMT (COMPILE-HALIDE E N) CTX)))
+        :INSTRUCTIONS (:PROMOTE (:DIVE 1)
+                                (:REWRITE COMPILER-OK)
+                                :TOP (:DIVE 2)
+                                (:REWRITE COMPILER-OK)
+                                :TOP (:USE CONSTANT-FOLD-SIM-OK)
+                                (:DEMOTE 1)
+                                :PROMOTE :PROMOTE (:DIVE 1)
+                                (:REWRITE CONSTANT-FOLD-SIM-OK)
+                                :TOP
+                                :S :PROVE))
