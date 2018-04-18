@@ -18,7 +18,6 @@
 ;; A legal expression can have following syntax in ACL2:
 ;; Expr = (<op> Expr Expr ...)  <op> can be anything like +/*/-/...
 ;; Expr = ([] <Buffer-or-Func> Expr)  1-d index
-;; Expr = ([2] <Buffer-or-Func> Expr Expr)  2-d index (not-for-now)
 ;; Expr = <dimentional_identifier>
 ;; Expr = <const_number>
 
@@ -866,8 +865,6 @@
 (defthm super-compiler-type-ok
   (implies (halide-1dp e)
            (halide-1dp (super-compiler e))))
-
-;; get stuck again
 
 (DEFTHM SUPER-COMPILER-OK
         (IMPLIES (AND (HALIDE-1DP E)
